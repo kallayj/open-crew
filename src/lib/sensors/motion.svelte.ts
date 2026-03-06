@@ -1,10 +1,13 @@
 export type PermissionState = 'pending' | 'granted' | 'denied';
 
-const SMOOTHING_ALPHA = 0.2;
-const MIN_STROKE_INTERVAL_MS = 800; // cap ~75 SPM
+const GRAVITY_ALPHA = 0.02;         // very slow LP filter — tracks orientation, not motion
+const SMOOTHING_ALPHA = 0.2;        // stroke signal smoothing
+const MIN_STROKE_INTERVAL_MS = 800; // cap at ~75 SPM
 const BUFFER_SIZE = 4;
-const NOISE_THRESHOLD = 1.5; // m/s² magnitude above gravity baseline
-const AXIS_DETECT_WINDOW_MS = 5000;
+const NOISE_THRESHOLD = 1.5;        // m/s² linear accel magnitude for hasMotion
+const MIN_PEAK_AMPLITUDE = 0.5;     // m/s² — gates noise peaks from counting as strokes
+const MOTION_DEBOUNCE = 10;         // consecutive below-threshold samples before clearing hasMotion
+const SETTLE_SAMPLES = 60;          // skip stroke detection while gravity filter settles (~1s at 60Hz)
 
 export class MotionSensor {
   spm = $state<number | null>(null);
@@ -12,16 +15,16 @@ export class MotionSensor {
   hasMotion = $state(false);
   permissionState = $state<PermissionState>('pending');
 
-  private smoothed = { x: 0, y: 0, z: 0 };
-  private axis: 'x' | 'y' | 'z' = 'z';
-  private axisDetected = false;
-  private axisDetectStart: number | null = null;
-  private axisSamples: { x: number[]; y: number[]; z: number[] } = { x: [], y: [], z: [] };
-
+  private gravity = { x: 0, y: 0, z: 0 };
+  private gravityInitialized = false;
+  private smoothedHoriz = 0;
+  private prevSmoothedHoriz = 0;
+  private risingPeakVal = 0;
+  private rising = false;
   private lastPeakTime: number | null = null;
   private intervals: number[] = [];
-  private prevSmoothedAxis = 0;
-  private rising = false;
+  private sampleCount = 0;
+  private motionFalseCount = 0;
 
   private listener: ((e: DeviceMotionEvent) => void) | null = null;
 
@@ -59,67 +62,82 @@ export class MotionSensor {
     const y = ag.y ?? 0;
     const z = ag.z ?? 0;
 
-    // Exponential smoothing
-    this.smoothed.x = SMOOTHING_ALPHA * x + (1 - SMOOTHING_ALPHA) * this.smoothed.x;
-    this.smoothed.y = SMOOTHING_ALPHA * y + (1 - SMOOTHING_ALPHA) * this.smoothed.y;
-    this.smoothed.z = SMOOTHING_ALPHA * z + (1 - SMOOTHING_ALPHA) * this.smoothed.z;
-
-    // Detect hasMotion: magnitude of raw accel (without gravity) above threshold
-    const rawAcc = e.acceleration;
-    if (rawAcc) {
-      const mag = Math.sqrt((rawAcc.x ?? 0) ** 2 + (rawAcc.y ?? 0) ** 2 + (rawAcc.z ?? 0) ** 2);
-      this.hasMotion = mag > NOISE_THRESHOLD;
-    }
-
-    const now = performance.now();
-
-    // Auto-detect dominant axis in first 5 seconds
-    if (!this.axisDetected) {
-      if (this.axisDetectStart === null) this.axisDetectStart = now;
-      this.axisSamples.x.push(x);
-      this.axisSamples.y.push(y);
-      this.axisSamples.z.push(z);
-
-      if (now - this.axisDetectStart >= AXIS_DETECT_WINDOW_MS) {
-        this.axis = this.pickAxis();
-        this.axisDetected = true;
-      }
+    // Seed gravity with first sample (phone assumed mostly stationary at startup)
+    if (!this.gravityInitialized) {
+      this.gravity = { x, y, z };
+      this.gravityInitialized = true;
       return;
     }
 
-    const val = this.smoothed[this.axis];
+    // Very slow low-pass filter tracks gravity direction as orientation drifts
+    this.gravity.x = GRAVITY_ALPHA * x + (1 - GRAVITY_ALPHA) * this.gravity.x;
+    this.gravity.y = GRAVITY_ALPHA * y + (1 - GRAVITY_ALPHA) * this.gravity.y;
+    this.gravity.z = GRAVITY_ALPHA * z + (1 - GRAVITY_ALPHA) * this.gravity.z;
 
-    // Peak detection: rising edge crossing
-    if (!this.rising && val > this.prevSmoothedAxis) {
+    // Linear acceleration: remove estimated gravity — works even when e.acceleration is null
+    const linX = x - this.gravity.x;
+    const linY = y - this.gravity.y;
+    const linZ = z - this.gravity.z;
+    const linMag = Math.sqrt(linX * linX + linY * linY + linZ * linZ);
+
+    // Debounced hasMotion: set immediately, clear only after sustained stillness
+    if (linMag > NOISE_THRESHOLD) {
+      this.hasMotion = true;
+      this.motionFalseCount = 0;
+    } else if (++this.motionFalseCount >= MOTION_DEBOUNCE) {
+      this.hasMotion = false;
+    }
+
+    this.sampleCount++;
+    if (this.sampleCount < SETTLE_SAMPLES) return;
+
+    // Remove vertical component to isolate horizontal (surge) acceleration.
+    // Phone is assumed fixed to the boat, so surge dominates: one clean peak per stroke
+    // during the drive, a smaller trough during recovery. Orientation-independent.
+    const gravMag = Math.sqrt(
+      this.gravity.x * this.gravity.x +
+      this.gravity.y * this.gravity.y +
+      this.gravity.z * this.gravity.z
+    );
+    if (gravMag < 1) return;
+
+    const vertComponent = (linX * this.gravity.x + linY * this.gravity.y + linZ * this.gravity.z) / gravMag;
+    const horizX = linX - vertComponent * (this.gravity.x / gravMag);
+    const horizY = linY - vertComponent * (this.gravity.y / gravMag);
+    const horizZ = linZ - vertComponent * (this.gravity.z / gravMag);
+    const horizMag = Math.sqrt(horizX * horizX + horizY * horizY + horizZ * horizZ);
+
+    this.smoothedHoriz = SMOOTHING_ALPHA * horizMag + (1 - SMOOTHING_ALPHA) * this.smoothedHoriz;
+
+    const val = this.smoothedHoriz;
+    const now = performance.now();
+
+    // Peak detection with amplitude gate
+    if (!this.rising && val > this.prevSmoothedHoriz) {
       this.rising = true;
-    } else if (this.rising && val < this.prevSmoothedAxis) {
-      // Falling edge = peak passed
-      this.rising = false;
-      if (this.lastPeakTime !== null) {
-        const interval = now - this.lastPeakTime;
-        if (interval >= MIN_STROKE_INTERVAL_MS) {
-          this.recordInterval(interval);
-          this.lastPeakTime = now;
+      this.risingPeakVal = val;
+    } else if (this.rising) {
+      if (val > this.risingPeakVal) {
+        this.risingPeakVal = val;
+      } else if (val < this.prevSmoothedHoriz) {
+        // Falling edge — peak passed
+        this.rising = false;
+        if (this.risingPeakVal >= MIN_PEAK_AMPLITUDE) {
+          if (this.lastPeakTime !== null) {
+            const interval = now - this.lastPeakTime;
+            if (interval >= MIN_STROKE_INTERVAL_MS) {
+              this.recordInterval(interval);
+              this.lastPeakTime = now;
+            }
+          } else {
+            this.lastPeakTime = now;
+          }
         }
-      } else {
-        this.lastPeakTime = now;
+        this.risingPeakVal = 0;
       }
     }
 
-    this.prevSmoothedAxis = val;
-  }
-
-  private pickAxis(): 'x' | 'y' | 'z' {
-    const variance = (arr: number[]) => {
-      const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
-      return arr.reduce((a, b) => a + (b - mean) ** 2, 0) / arr.length;
-    };
-    const vx = variance(this.axisSamples.x);
-    const vy = variance(this.axisSamples.y);
-    const vz = variance(this.axisSamples.z);
-    if (vx >= vy && vx >= vz) return 'x';
-    if (vy >= vx && vy >= vz) return 'y';
-    return 'z';
+    this.prevSmoothedHoriz = val;
   }
 
   private recordInterval(interval: number): void {

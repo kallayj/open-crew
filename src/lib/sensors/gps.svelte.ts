@@ -2,33 +2,43 @@ import { formatPace } from '$lib/utils/format';
 
 export type PermissionState = 'pending' | 'granted' | 'denied';
 
-interface SpeedSample {
-  speedMs: number;
+interface PositionSample {
+  lat: number;
+  lon: number;
   timestamp: number;
 }
 
-const DEFAULT_WINDOW_MS = 3000;
+function haversine(a: PositionSample, b: PositionSample): number {
+  const R = 6_371_000;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLon = ((b.lon - a.lon) * Math.PI) / 180;
+  const x =
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
 
 export class GpsSensor {
   pace = $state<string | null>(null);
   permissionState = $state<PermissionState>('pending');
 
-  private samples: SpeedSample[] = [];
+  /** Average speed over the last N metres. One rowing stroke covers ~8-10 m. */
+  distanceWindowM = $state(50);
+
+  private positions: PositionSample[] = [];
+  private segmentDists: number[] = []; // segmentDists[i] = dist from positions[i] to positions[i+1]
   private watchId: number | null = null;
-  strokePeriodMs = $state<number | null>(null);
 
   start(): void {
     if (!navigator.geolocation) {
       this.permissionState = 'denied';
       return;
     }
-
     this.watchId = navigator.geolocation.watchPosition(
       (pos) => this.handlePosition(pos),
       (err) => {
-        if (err.code === err.PERMISSION_DENIED) {
-          this.permissionState = 'denied';
-        }
+        if (err.code === err.PERMISSION_DENIED) this.permissionState = 'denied';
       },
       { enableHighAccuracy: true, maximumAge: 0 }
     );
@@ -36,19 +46,31 @@ export class GpsSensor {
   }
 
   private handlePosition(pos: GeolocationPosition): void {
-    const speed = pos.coords.speed; // m/s, null if unavailable
-    if (speed === null || speed === undefined) return;
+    const { latitude: lat, longitude: lon } = pos.coords;
+    const newSample = { lat, lon, timestamp: pos.timestamp };
 
-    const now = Date.now();
-    this.samples.push({ speedMs: speed, timestamp: now });
+    if (this.positions.length > 0) {
+      const d = haversine(this.positions[this.positions.length - 1], newSample);
+      this.segmentDists.push(d);
+    }
+    this.positions.push(newSample);
 
-    const windowMs = Math.max(this.strokePeriodMs ?? DEFAULT_WINDOW_MS, DEFAULT_WINDOW_MS);
-    const cutoff = now - windowMs;
-    this.samples = this.samples.filter((s) => s.timestamp >= cutoff);
+    if (this.positions.length < 2) return;
 
-    if (this.samples.length === 0) return;
-    const avg = this.samples.reduce((sum, s) => sum + s.speedMs, 0) / this.samples.length;
-    this.pace = formatPace(avg);
+    // Trim oldest segments while the remaining distance still covers the window
+    let totalDist = this.segmentDists.reduce((a, b) => a + b, 0);
+    while (this.segmentDists.length > 1 && totalDist - this.segmentDists[0] >= this.distanceWindowM) {
+      totalDist -= this.segmentDists.shift()!;
+      this.positions.shift();
+    }
+
+    if (totalDist < 1) return;
+
+    const totalTime =
+      (this.positions[this.positions.length - 1].timestamp - this.positions[0].timestamp) / 1000;
+    if (totalTime <= 0) return;
+
+    this.pace = formatPace(totalDist / totalTime);
   }
 
   destroy(): void {

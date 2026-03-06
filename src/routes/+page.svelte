@@ -9,11 +9,6 @@
   const motion = new MotionSensor();
   const gps = new GpsSensor();
 
-  // Keep GPS averaging window in sync with stroke period
-  $effect(() => {
-    gps.strokePeriodMs = motion.strokePeriodMs;
-  });
-
   // Screen Wake Lock
   let wakeLock: WakeLockSentinel | null = null;
 
