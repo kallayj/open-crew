@@ -19,6 +19,9 @@ function haversine(a: PositionSample, b: PositionSample): number {
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
+const MIN_SPEED_MS = 0.5;         // m/s — below this show null rather than a nonsense split
+const MAX_BUFFER_TIME_MS = 60_000; // prevent unbounded buffer growth when stationary
+
 export class GpsSensor {
   pace = $state<string | null>(null);
   permissionState = $state<PermissionState>('pending');
@@ -57,9 +60,19 @@ export class GpsSensor {
 
     if (this.positions.length < 2) return;
 
-    // Trim oldest segments while the remaining distance still covers the window
     let totalDist = this.segmentDists.reduce((a, b) => a + b, 0);
+
+    // Trim oldest segments while the remaining distance still covers the window
     while (this.segmentDists.length > 1 && totalDist - this.segmentDists[0] >= this.distanceWindowM) {
+      totalDist -= this.segmentDists.shift()!;
+      this.positions.shift();
+    }
+
+    // Also trim by time to prevent unbounded growth when stationary
+    while (
+      this.positions.length > 1 &&
+      this.positions[this.positions.length - 1].timestamp - this.positions[0].timestamp > MAX_BUFFER_TIME_MS
+    ) {
       totalDist -= this.segmentDists.shift()!;
       this.positions.shift();
     }
@@ -70,7 +83,13 @@ export class GpsSensor {
       (this.positions[this.positions.length - 1].timestamp - this.positions[0].timestamp) / 1000;
     if (totalTime <= 0) return;
 
-    this.pace = formatPace(totalDist / totalTime);
+    const speed = totalDist / totalTime;
+    if (speed < MIN_SPEED_MS) {
+      this.pace = null;
+      return;
+    }
+
+    this.pace = formatPace(speed);
   }
 
   destroy(): void {

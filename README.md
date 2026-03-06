@@ -8,26 +8,38 @@ Measuring stroke rate and boat speed for a rowing shell used to require speciali
 ### Stroke Rate (SPM)
 Reads the phone's accelerometer via the `DeviceMotion` API and counts strokes per minute.
 
-**Algorithm:**
-1. A very slow exponential low-pass filter (α = 0.02) tracks the gravity vector as the phone's orientation drifts. It is seeded from the first sample, so no calibration period is needed.
-2. Linear (motion) acceleration is computed by subtracting the estimated gravity from `accelerationIncludingGravity`. This works on all devices, including Android phones that do not expose `DeviceMotionEvent.acceleration`.
-3. The vertical component of linear acceleration (along the gravity vector) is removed, leaving the *horizontal (surge) component* — the fore-aft acceleration of the hull. The magnitude of this horizontal vector is used as the stroke signal. This is orientation-independent within the horizontal plane and assumes the phone is fixed to the boat, not worn on the rower's body.
-4. The surge magnitude is smoothed (α = 0.2) and a peak detector counts each drive phase as one stroke. Peaks below 0.5 m/s² are rejected as noise; peaks closer together than 800 ms (~75 SPM) are ignored.
-5. SPM is computed from the rolling mean of the last 4 inter-peak intervals.
+**Algorithm** (based on Hermsen 2013, §4.3.2 and §4.4.2):
+
+1. A very slow time-constant filter (τ = 3 s) tracks the gravity vector as the phone's orientation drifts. Seeded from the first sample — no calibration period needed.
+2. Linear acceleration = `accelerationIncludingGravity` − gravity. Works on all devices including Android phones that do not expose `DeviceMotionEvent.acceleration`.
+3. The vertical component is removed, leaving the *horizontal (surge) vector* — the fore-aft acceleration of the hull, perpendicular to gravity. Assumes the phone is fixed to the boat.
+4. The dominant horizontal axis is identified from a slow EMA of each component's absolute value (τ = 2 s). The current sign of that axis is applied to the horizontal magnitude, giving a **signed surge signal** where the catch deceleration is a negative peak.
+5. A 3-second disambiguation window at startup checks if |max| > |min|. If so, the signal sign is flipped — resolving the 180° forward/backward ambiguity without knowing how the phone is mounted.
+6. The signed signal is smoothed (τ = 80 ms). Strokes are detected as **negative catch peaks** using a dynamic threshold (deepest of the 5 most recent troughs × 0.6, floor −0.3 m/s²). Hermsen validates the catch as the most temporally consistent feature of the stroke cycle.
+7. Peak time is estimated as the midpoint of the threshold down-crossing and up-crossing, which is more stable than the raw signal minimum.
+8. SPM = 60000 / rolling mean of the last 4 inter-stroke intervals. Cleared after 6 s with no stroke.
 
 **Tunable constants** (`src/lib/sensors/motion.svelte.ts`):
 
+All time-sensitive parameters use time constants, so behaviour is consistent regardless of whether `DeviceMotion` fires at 10 Hz or 60 Hz (which varies by device and browser).
+
 | Constant | Default | Effect |
 |---|---|---|
-| `GRAVITY_ALPHA` | 0.02 | Rate of gravity re-estimation. Lower = more stable but slower to adapt to orientation change. |
-| `SMOOTHING_ALPHA` | 0.2 | Heave signal smoothing. Lower = smoother but laggier peak detection. |
-| `MIN_PEAK_AMPLITUDE` | 0.5 m/s² | Below this the peak is ignored. Raise to suppress false strokes on flat water; lower if strokes are missed. |
+| `GRAVITY_TAU_S` | 3 s | Gravity filter time constant. |
+| `STROKE_TAU_S` | 0.08 s | Surge signal smoothing. Larger = smoother but laggier. |
+| `AXIS_TAU_S` | 2 s | Dominant axis tracking. Larger = more stable but slower to adapt. |
+| `SETTLE_TIME_MS` | 1500 ms | Wait before stroke detection (gravity filter settling). |
+| `DISAMBIG_WINDOW_MS` | 3000 ms | Signal collection window for forward/back orientation check. |
+| `THRESHOLD_FLOOR` | −0.3 m/s² | Minimum dynamic threshold depth (prevents noise triggers at rest). |
+| `THRESHOLD_MULTIPLIER` | 0.6 | Dynamic threshold = deepest recent trough × this value. |
+| `THRESHOLD_BUFFER_SIZE` | 5 | Number of recent troughs used to set the dynamic threshold. |
 | `MIN_STROKE_INTERVAL_MS` | 800 ms | Minimum time between counted strokes (~75 SPM cap). |
-| `NOISE_THRESHOLD` | 1.5 m/s² | Linear acceleration threshold for "motion detected" (starts stopwatch). |
-| `BUFFER_SIZE` | 4 | Number of intervals averaged for SPM. Higher = smoother but slower to update. |
-| `SETTLE_SAMPLES` | 60 | Samples skipped at startup while gravity filter stabilises (~1 s at 60 Hz). |
+| `NOISE_THRESHOLD` | 1.5 m/s² | Linear acceleration threshold for "motion detected". |
+| `MOTION_TIMEOUT_MS` | 500 ms | Time below threshold before `hasMotion` clears. |
+| `REST_TIMEOUT_MS` | 6000 ms | SPM cleared after this long with no detected stroke. |
+| `BUFFER_SIZE` | 4 | Intervals averaged for SPM output. |
 
-**`hasMotion` flag:** set true when linear acceleration magnitude exceeds `NOISE_THRESHOLD`, and cleared only after 10 consecutive samples below it (debounced to avoid flickering between steps). This flag arms the stopwatch auto-start.
+**`hasMotion` flag:** set true immediately when linear acceleration magnitude exceeds `NOISE_THRESHOLD`, cleared after `MOTION_TIMEOUT_MS` of sustained stillness. Arms the stopwatch auto-start.
 
 ### Boat Speed / Pace
 Uses the `Geolocation` API (`watchPosition` with high accuracy) and displays speed as a split time in min:sec per 500 m — the standard rowing pace unit.
