@@ -3,13 +3,16 @@
 
   let { hasMotion }: { hasMotion: boolean } = $props();
 
-  let watchState: 'ready' | 'running' | 'paused' = $state('ready');
+  let watchState: 'ready' | 'running' | 'paused' = $state('paused');
   let elapsed = $state(0);
   let startTime: number | null = null;
   let pausedAt: number | null = null;
   let rafId: number | null = null;
+  let holdTimer: ReturnType<typeof setTimeout> | null = null;
+  let holding = $state(false);
+  const HOLD_MS = 650;
 
-  // Auto-start when motion detected
+  // Auto-start when motion detected (only when armed)
   $effect(() => {
     if (hasMotion && watchState === 'ready') {
       startWatch();
@@ -21,7 +24,7 @@
     if (!('mediaSession' in navigator)) return;
 
     navigator.mediaSession.setActionHandler('play', () => {
-      if (watchState === 'ready' || watchState === 'paused') startWatch();
+      if (watchState === 'paused') watchState = 'ready';
     });
     navigator.mediaSession.setActionHandler('pause', () => {
       if (watchState === 'running') pauseWatch();
@@ -40,6 +43,11 @@
   $effect(() => {
     if (!('mediaSession' in navigator)) return;
     navigator.mediaSession.playbackState = watchState === 'running' ? 'playing' : 'paused';
+    navigator.mediaSession.setPositionState({
+      duration: Infinity,
+      playbackRate: 1,
+      position: elapsed / 1000,
+    });
   });
 
   function tick(): void {
@@ -78,38 +86,60 @@
     elapsed = 0;
     startTime = null;
     pausedAt = null;
-    watchState = 'ready';
+    watchState = 'paused';
   }
 
   function toggleRunning(): void {
     if (watchState === 'running') pauseWatch();
-    else if (watchState === 'paused') startWatch();
+    else if (watchState === 'paused') watchState = 'ready';
+    else if (watchState === 'ready') watchState = 'paused';
   }
 
-  const displayTime = $derived(watchState === 'ready' ? 'READY' : formatStopwatch(elapsed));
+  function holdStart(): void {
+    if (watchState === 'ready') return;
+    holding = true;
+    holdTimer = setTimeout(() => {
+      holding = false;
+      resetWatch();
+    }, HOLD_MS);
+  }
+
+  function holdEnd(): void {
+    if (holdTimer !== null) {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+    }
+    holding = false;
+  }
+
+  const displayTime = $derived(watchState === 'ready' ? 'READY' : elapsed === 0 ? '--:--.--' : formatStopwatch(elapsed));
+  const btnLabel = $derived(watchState === 'running' ? 'Pause' : watchState === 'ready' ? 'Cancel' : elapsed === 0 ? 'Start' : 'Resume');
 </script>
 
 <div class="instrument">
   <div class="label">STOPWATCH</div>
 
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="value"
     class:active={watchState === 'running'}
-    class:ready={watchState === 'ready'}
-    onclick={watchState !== 'ready' ? toggleRunning : undefined}
+    class:ready={watchState === 'ready' || elapsed === 0}
+    class:holding
+    onpointerdown={holdStart}
+    onpointerup={holdEnd}
+    onpointercancel={holdEnd}
+    onpointerleave={holdEnd}
+    oncontextmenu={(e) => e.preventDefault()}
   >
     {displayTime}
   </div>
 
   <div class="controls">
-    {#if watchState === 'running'}
-      <button class="btn" onclick={pauseWatch}>Stop</button>
-    {:else if watchState === 'paused'}
-      <button class="btn primary" onclick={startWatch}>Resume</button>
-      <button class="btn" onclick={resetWatch}>Reset</button>
-    {/if}
+    <button
+      class="btn"
+      class:primary={watchState !== 'running'}
+      onclick={toggleRunning}
+    >{btnLabel}</button>
   </div>
 </div>
 
@@ -137,17 +167,29 @@
     color: var(--text-muted);
     transition: color 0.3s;
     cursor: default;
+    user-select: none;
+    touch-action: none;
+    border-radius: 0.4rem;
+    padding: 0.1em 0.2em;
   }
 
   .value.active {
     color: var(--accent);
-    cursor: pointer;
   }
 
   .value.ready {
     font-size: clamp(1.2rem, 5vw, 3rem);
     letter-spacing: 0.1em;
     color: var(--text-muted);
+  }
+
+  .value.holding {
+    animation: hold-fill 650ms linear forwards;
+  }
+
+  @keyframes hold-fill {
+    from { background: transparent; }
+    to   { background: #2a0a0a; color: #ff5252; }
   }
 
   .controls {
