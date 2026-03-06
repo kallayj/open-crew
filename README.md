@@ -1,2 +1,4 @@
 # open-crew
-Open source rowing instrument web app
+Free and open source rowing instrument web app
+
+Measuring stroke rate and boat speed for a rowing shell used to require specialized hardware, including a seat magnet, impeller, and a purpose-built electronic device (i.e. the Cox Box, made by Nielsen Kellerman) to receiving the instrument signals over wired connections and translate them into readings on its display. Today the hardware required for the same functionality is packed into every smartphone, and the signals are available to any web app running in a modern browser. This project implements those rate, speed, and stopwatch instruments in a static web app running entirely in the browser. For any rower with a smartphone, having these instruments is now only a matter of mounting the phone and protecting it from the elements, not purchasing specialized electronics or paying for an app.  
