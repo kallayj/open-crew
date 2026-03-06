@@ -5,7 +5,7 @@
   ## Stack
   - SvelteKit 5 with Svelte runes (`$state`, `$derived`, `$effect`, `$props`)
   - TypeScript, no external dependencies
-  - `adapter-auto` (swap to `adapter-static` for deployment)
+  - `adapter-static`
 
   ## Key files
   - `src/lib/sensors/motion.svelte.ts` — DeviceMotion → stroke rate
