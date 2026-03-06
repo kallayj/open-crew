@@ -50,3 +50,9 @@ Algorithm closely follows Hermsen (2013) §4.3.2 + §4.4.2.
 - Fullscreen + DeviceMotion require HTTPS on mobile
 - `e.acceleration` (gravity-subtracted) is null on many Android phones — always derive from `accelerationIncludingGravity` minus the gravity filter
 - Use latin alphanumeric variable names (not Greek letters like φ, Δ, λ) even in math-heavy code
+
+## Possible Improvements from Open Source Stroke Coach (implementation in StrokeCollector-nolog.ino)
+
+- IIR low-pass filter per axis before detection (cleaner than running mean)
+- 3-stroke rolling average on SPM output for display stability
+- 1000 ms refractory period as a simple and effective debounce, which limits the rate to 60
