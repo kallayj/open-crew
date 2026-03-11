@@ -1,4 +1,5 @@
 <script lang="ts">
+  declare const __BUILD_TIME__: string;
   import { onMount } from 'svelte';
   import { MotionSensor } from '$lib/sensors/motion.svelte';
   import { GpsSensor } from '$lib/sensors/gps.svelte';
@@ -110,6 +111,10 @@
   </div>
 </div>
 
+<div class="build-badge" class:dev={__BUILD_TIME__.endsWith('-dev')}>
+  {__BUILD_TIME__}
+</div>
+
 {#if showBanner}
   <div class="fs-banner" role="banner">
     <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -202,5 +207,21 @@
 
   .fs-dismiss:hover {
     color: var(--text);
+  }
+
+  .build-badge {
+    position: fixed;
+    bottom: 4px;
+    right: 6px;
+    font-size: 0.6rem;
+    color: #333;
+    pointer-events: none;
+    z-index: 10;
+    letter-spacing: 0.03em;
+  }
+
+  .build-badge.dev {
+    color: #555;
+    font-weight: bold;
   }
 </style>
