@@ -2,6 +2,15 @@ import { formatPace } from '$lib/utils/format';
 
 export type PermissionState = 'pending' | 'granted' | 'denied';
 
+/** Positions with accuracy worse than this are not used for pace calculation. */
+export const MIN_ACCURACY_M = 20;
+
+/**
+ * Accuracy this poor almost certainly means an IP-based location fix.
+ * Real GPS, even indoors, typically comes in under a few hundred metres.
+ */
+export const IP_ACCURACY_M = 1000;
+
 interface PositionSample {
   lat: number;
   lon: number;
@@ -25,6 +34,7 @@ const MAX_BUFFER_TIME_MS = 60_000; // prevent unbounded buffer growth when stati
 export class GpsSensor {
   pace = $state<string | null>(null);
   permissionState = $state<PermissionState>('pending');
+  accuracy = $state<number | null>(null);
 
   /** Average speed over the last N metres. One rowing stroke covers ~8-10 m. */
   distanceWindowM = $state(50);
@@ -32,6 +42,7 @@ export class GpsSensor {
   private positions: PositionSample[] = [];
   private segmentDists: number[] = []; // segmentDists[i] = dist from positions[i] to positions[i+1]
   private watchId: number | null = null;
+  private firstFixResolve: ((accuracy: number) => void) | null = null;
 
   start(): void {
     if (!navigator.geolocation) {
@@ -48,7 +59,43 @@ export class GpsSensor {
     this.permissionState = 'granted';
   }
 
+  /**
+   * Resolves with the accuracy (metres) of the first position fix, or null if
+   * no fix arrives within timeoutMs. If a fix is already available, resolves
+   * immediately.
+   */
+  waitForFirstFix(timeoutMs: number): Promise<number | null> {
+    if (this.accuracy !== null) return Promise.resolve(this.accuracy);
+    return new Promise<number | null>((resolve) => {
+      let settled = false;
+      this.firstFixResolve = (accuracy: number) => {
+        if (!settled) { settled = true; resolve(accuracy); }
+      };
+      setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          this.firstFixResolve = null;
+          resolve(null);
+        }
+      }, timeoutMs);
+    });
+  }
+
   private handlePosition(pos: GeolocationPosition): void {
+    const acc = pos.coords.accuracy;
+    this.accuracy = acc;
+
+    if (this.firstFixResolve) {
+      this.firstFixResolve(acc);
+      this.firstFixResolve = null;
+    }
+
+    // Don't compute pace from inaccurate fixes
+    if (acc > MIN_ACCURACY_M) {
+      this.pace = null;
+      return;
+    }
+
     const { latitude: lat, longitude: lon } = pos.coords;
     const newSample = { lat, lon, timestamp: pos.timestamp };
 
