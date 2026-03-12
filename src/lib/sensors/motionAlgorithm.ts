@@ -6,7 +6,6 @@ export const GRAVITY_TAU_S = 3.0;
 export const STROKE_TAU_S = 0.08;
 export const AXIS_TAU_S = 2.0;
 export const SETTLE_TIME_MS = 1500;
-export const DISAMBIG_WINDOW_MS = 3000;
 export const MOTION_TIMEOUT_MS = 500;
 export const MIN_STROKE_INTERVAL_MS = 800;
 export const NOISE_THRESHOLD = 1.5;
@@ -33,12 +32,6 @@ export interface AlgorithmState {
 
   // Dominant horizontal axis tracking
   axisAbsEma: { x: number; y: number; z: number };
-
-  // Forward/backward disambiguation (Hermsen §4.3)
-  signFlip: 1 | -1;
-  disambigMax: number;
-  disambigMin: number;
-  disambigDone: boolean;
 
   // Signed stroke signal (smoothed)
   smoothedSignal: number;
@@ -72,11 +65,6 @@ export function createInitialState(): AlgorithmState {
     lastSampleTime: null,
 
     axisAbsEma: { x: 0, y: 0, z: 0 },
-
-    signFlip: 1,
-    disambigMax: -Infinity,
-    disambigMin: Infinity,
-    disambigDone: false,
 
     smoothedSignal: 0,
 
@@ -159,7 +147,10 @@ export function processMotionSample(sample: MotionSample, state: AlgorithmState)
   state.axisAbsEma.y = axisAlpha * Math.abs(horizY) + (1 - axisAlpha) * state.axisAbsEma.y;
   state.axisAbsEma.z = axisAlpha * Math.abs(horizZ) + (1 - axisAlpha) * state.axisAbsEma.z;
 
-  // Sign the magnitude by the current value of the dominant axis (Hermsen §4.3.2)
+  // Sign the magnitude by the current value of the dominant axis.
+  // SPM is a period measurement — the sign determines which of catch or drive
+  // is detected, but both occur once per stroke so the period is unaffected.
+  // Forward direction (bow vs. stern) is derived from GPS track at speed, not here.
   const axisSum = state.axisAbsEma.x + state.axisAbsEma.y + state.axisAbsEma.z;
   let dominantVal = 0;
   if (axisSum > 0.01) {
@@ -177,20 +168,7 @@ export function processMotionSample(sample: MotionSample, state: AlgorithmState)
   const strokeAlpha = 1 - Math.exp(-dt / STROKE_TAU_S);
   state.smoothedSignal = strokeAlpha * rawSignal + (1 - strokeAlpha) * state.smoothedSignal;
 
-  // Apply forward/backward flip then collect disambiguation data
-  const val = state.signFlip * state.smoothedSignal;
-
-  if (!state.disambigDone) {
-    state.disambigMax = Math.max(state.disambigMax, val);
-    state.disambigMin = Math.min(state.disambigMin, val);
-    if (now - state.settleStartTime! >= SETTLE_TIME_MS + DISAMBIG_WINDOW_MS) {
-      // Catch deceleration is always deeper than drive acceleration.
-      // If the positive peak exceeds the negative peak, our sign is backwards.
-      if (state.disambigMax > -state.disambigMin) state.signFlip = -1;
-      state.disambigDone = true;
-    }
-    return state;
-  }
+  const val = state.smoothedSignal;
 
   // Track most negative value in current inter-stroke window
   state.windowMin = Math.min(state.windowMin, val);

@@ -4,7 +4,7 @@
  *
  * To use:
  *   1. Record a rowing session with Sensor Logger (Android).
- *   2. Export Accelerometer.csv — verify resting z ≈ 9.8.
+ *   2. Export Accelerometer.csv — verify resting total magnitude ≈ 9.8.
  *   3. Place the file at src/lib/sensors/__fixtures__/rowing.csv
  *   4. Run: yarn test:run
  *   5. Open src/lib/sensors/__fixtures__/replay-output.csv in Google Sheets.
