@@ -35,6 +35,9 @@ export class GpsSensor {
   pace = $state<string | null>(null);
   permissionState = $state<PermissionState>('pending');
   accuracy = $state<number | null>(null);
+  position = $state<{ lat: number; lon: number } | null>(null);
+  /** True when the fix includes altitude, indicating a real GNSS fix rather than IP/WiFi. */
+  isGpsFix = $state<boolean | null>(null);
 
   /** Average speed over the last N metres. One rowing stroke covers ~8-10 m. */
   distanceWindowM = $state(50);
@@ -83,20 +86,21 @@ export class GpsSensor {
 
   private handlePosition(pos: GeolocationPosition): void {
     const acc = pos.coords.accuracy;
+    const { latitude: lat, longitude: lon } = pos.coords;
     this.accuracy = acc;
+    this.position = { lat, lon };
+    this.isGpsFix = pos.coords.altitude !== null;
 
     if (this.firstFixResolve) {
       this.firstFixResolve(acc);
       this.firstFixResolve = null;
     }
 
-    // Don't compute pace from inaccurate fixes
+    // Don't compute pace from inaccurate or invalid fixes (acc=0 is a browser bug)
     if (acc > MIN_ACCURACY_M) {
       this.pace = null;
       return;
     }
-
-    const { latitude: lat, longitude: lon } = pos.coords;
     const newSample = { lat, lon, timestamp: pos.timestamp };
 
     if (this.positions.length > 0) {

@@ -161,19 +161,32 @@ To simplify the UI, these will be defined at build time -- different versions ca
 - **DeviceOrientationAbsolute unavailable vs. denied:** functionally equivalent for degradation purposes; distinguish only to show actionable UI for permission recovery.
 - iOS permission state is not queryable before requesting.
 
+### Geolocation fix quality
+
+The Geolocation API may return fixes from sources other than GNSS. Fix source is inferred from the presence or absence of altitude in the fix: real GNSS fixes include altitude. Empirically, the absence of altitude is determined to be a better indicator IP- and WiFi-based fixes than accuracy.
+
+| Fix type | Detection | Consequence |
+|---|---|---|
+| GNSS, accuracy ≤ 20 m | altitude present, accuracy ≤ `MIN_ACCURACY_M` | Speed fully enabled |
+| GNSS, accuracy > 20 m | altitude present, accuracy > `MIN_ACCURACY_M` | Speed disabled until accuracy improves; user warned |
+| Network (IP/WiFi) | altitude absent | Speed disabled; user warned that a real GPS fix may not arrive |
+
+Speed is re-enabled reactively as accuracy improves below `MIN_ACCURACY_M` (20 m default) during a session. Accuracy is displayed on the boat speed instrument and fades once a split is active.
+
 ### Degradation matrix
 
 | Geolocation | Motion | Consequence |
 |---|---|---|
-| granted | granted | Full functionality |
-| granted | denied/unavailable | Speed and position only; no stroke rate, no heading |
+| granted, good fix | granted | Full functionality |
+| granted, good fix | denied/unavailable | Speed and position only; no stroke rate, no heading |
+| granted, poor or network fix | granted | Stroke rate, heading, and roll; speed disabled until fix improves |
 | denied/unavailable | granted | Stroke rate, heading, and roll; no speed, position, or track |
 | denied/unavailable | denied/unavailable | Nonfunctional |
 | granted | granted, no magnetometer | Full except heading at rest is unavailable; GPS track only |
 
 ### Startup flow
 
-Request permissions explicitly with UI context before attempting sensor access. Detect available sensors after grant and enter the appropriate degraded mode with clear labeling. No silent failures or unexplained zeros.
+Request permissions explicitly with UI context before attempting sensor access. After grant, wait up to 3 s for the first geolocation fix and evaluate its quality. Auto-continue if all sensors are fully available; otherwise present a results screen with per-sensor status and a labelled warning for each degraded condition before the user continues. No silent failures or unexplained zeros.
 
 Also display media session control option.
 

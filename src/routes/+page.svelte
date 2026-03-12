@@ -11,6 +11,8 @@
   const motion = new MotionSensor();
   const gps = new GpsSensor();
 
+  import { browser } from '$app/environment';
+
   let showStartup = $state(true);
 
   function onStartupContinue() {
@@ -94,7 +96,7 @@
     <StrokeRate spm={motion.spm} permissionState={motion.permissionState} />
   </div>
   <div class="panel">
-    <BoatSpeed pace={gps.pace} permissionState={gps.permissionState} accuracy={gps.accuracy} />
+    <BoatSpeed pace={gps.pace} permissionState={gps.permissionState} accuracy={gps.accuracy} isGpsFix={gps.isGpsFix} />
   </div>
   <div class="panel">
     <Stopwatch hasMotion={motion.hasMotion} />

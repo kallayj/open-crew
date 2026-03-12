@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MotionSensor } from './motion.svelte';
-import { GpsSensor, MIN_ACCURACY_M, IP_ACCURACY_M } from './gps.svelte';
+import { GpsSensor, MIN_ACCURACY_M } from './gps.svelte';
 
 // ---------------------------------------------------------------------------
 // MotionSensor — permission state
@@ -151,10 +151,14 @@ describe('GpsSensor accuracy', () => {
     };
   }
 
-  function makePosition(accuracy: number, lat = 0, lon = 0, timestamp = Date.now()): GeolocationPosition {
+  function makePosition(
+    accuracy: number,
+    { lat = 0, lon = 0, altitude = null, timestamp = Date.now() }:
+    { lat?: number; lon?: number; altitude?: number | null; timestamp?: number } = {}
+  ): GeolocationPosition {
     return {
       coords: { accuracy, latitude: lat, longitude: lon,
-        altitude: null, altitudeAccuracy: null, heading: null, speed: null,
+        altitude, altitudeAccuracy: null, heading: null, speed: null,
         toJSON: () => ({}) },
       timestamp,
       toJSON: () => {},
@@ -183,6 +187,38 @@ describe('GpsSensor accuracy', () => {
     expect(sensor.accuracy).toBe(8);
   });
 
+  // --- isGpsFix detection via altitude ---
+
+  it('isGpsFix starts as null', () => {
+    expect(new GpsSensor().isGpsFix).toBeNull();
+  });
+
+  it('isGpsFix is true when altitude is present', () => {
+    const { fireSuccess } = makeGeoMock();
+    const sensor = new GpsSensor();
+    sensor.start();
+    fireSuccess(makePosition(10, { altitude: 14.3 }));
+    expect(sensor.isGpsFix).toBe(true);
+  });
+
+  it('isGpsFix is false when altitude is absent', () => {
+    const { fireSuccess } = makeGeoMock();
+    const sensor = new GpsSensor();
+    sensor.start();
+    fireSuccess(makePosition(500, { altitude: null }));
+    expect(sensor.isGpsFix).toBe(false);
+  });
+
+  it('isGpsFix updates on subsequent positions', () => {
+    const { fireSuccess } = makeGeoMock();
+    const sensor = new GpsSensor();
+    sensor.start();
+    fireSuccess(makePosition(500, { altitude: null }));
+    expect(sensor.isGpsFix).toBe(false);
+    fireSuccess(makePosition(10, { altitude: 5.0 }));
+    expect(sensor.isGpsFix).toBe(true);
+  });
+
   // --- waitForFirstFix ---
 
   it('waitForFirstFix resolves with accuracy when a position fires', async () => {
@@ -202,6 +238,17 @@ describe('GpsSensor accuracy', () => {
     expect(await sensor.waitForFirstFix(5000)).toBe(8);
   });
 
+  it('waitForFirstFix: position arriving after timeout does not reject', async () => {
+    vi.useFakeTimers();
+    const { fireSuccess } = makeGeoMock();
+    const sensor = new GpsSensor();
+    sensor.start();
+    const promise = sensor.waitForFirstFix(3000);
+    vi.advanceTimersByTime(3000);
+    await promise;
+    expect(() => fireSuccess(makePosition(10))).not.toThrow();
+  });
+
   it('waitForFirstFix resolves null on timeout', async () => {
     vi.useFakeTimers();
     makeGeoMock();
@@ -212,18 +259,6 @@ describe('GpsSensor accuracy', () => {
     expect(await promise).toBeNull();
   });
 
-  it('waitForFirstFix: position arriving after timeout does not reject', async () => {
-    vi.useFakeTimers();
-    const { fireSuccess } = makeGeoMock();
-    const sensor = new GpsSensor();
-    sensor.start();
-    const promise = sensor.waitForFirstFix(3000);
-    vi.advanceTimersByTime(3000);
-    await promise; // resolves null, not rejected
-    // firing position after timeout should not throw
-    expect(() => fireSuccess(makePosition(10))).not.toThrow();
-  });
-
   // --- pace gating on accuracy ---
 
   it('pace remains null when accuracy > MIN_ACCURACY_M', () => {
@@ -231,8 +266,8 @@ describe('GpsSensor accuracy', () => {
     const sensor = new GpsSensor();
     sensor.start();
     const t = Date.now();
-    fireSuccess(makePosition(MIN_ACCURACY_M + 1, 0,       0,       t));
-    fireSuccess(makePosition(MIN_ACCURACY_M + 1, 0.001,   0,       t + 5000));
+    fireSuccess(makePosition(MIN_ACCURACY_M + 1, { lat: 0,     lon: 0,     timestamp: t }));
+    fireSuccess(makePosition(MIN_ACCURACY_M + 1, { lat: 0.001, lon: 0,     timestamp: t + 5000 }));
     expect(sensor.pace).toBeNull();
   });
 
@@ -241,8 +276,8 @@ describe('GpsSensor accuracy', () => {
     const sensor = new GpsSensor();
     sensor.start();
     const t = Date.now();
-    fireSuccess(makePosition(MIN_ACCURACY_M, 0,     0, t));
-    fireSuccess(makePosition(MIN_ACCURACY_M, 0.001, 0, t + 5000));
+    fireSuccess(makePosition(MIN_ACCURACY_M, { lat: 0,     lon: 0, timestamp: t }));
+    fireSuccess(makePosition(MIN_ACCURACY_M, { lat: 0.001, lon: 0, timestamp: t + 5000 }));
     expect(sensor.pace).not.toBeNull();
   });
 
@@ -251,46 +286,53 @@ describe('GpsSensor accuracy', () => {
     const sensor = new GpsSensor();
     sensor.start();
     const t = Date.now();
-    fireSuccess(makePosition(MIN_ACCURACY_M, 0,     0, t));
-    fireSuccess(makePosition(MIN_ACCURACY_M, 0.001, 0, t + 5000));
+    fireSuccess(makePosition(MIN_ACCURACY_M, { lat: 0,     lon: 0, timestamp: t }));
+    fireSuccess(makePosition(MIN_ACCURACY_M, { lat: 0.001, lon: 0, timestamp: t + 5000 }));
     expect(sensor.pace).not.toBeNull(); // established
 
-    fireSuccess(makePosition(MIN_ACCURACY_M + 1, 0.002, 0, t + 10000));
+    fireSuccess(makePosition(MIN_ACCURACY_M + 1, { lat: 0.002, lon: 0, timestamp: t + 10000 }));
     expect(sensor.pace).toBeNull();
   });
 
-  // --- accuracy threshold permutations for startup degradation logic ---
+  // --- fix quality permutations for startup degradation logic ---
 
-  it('accuracy <= MIN_ACCURACY_M: no degradation (good fix)', async () => {
+  it('good GNSS fix: accuracy <= MIN_ACCURACY_M and altitude present → no degradation', async () => {
     const { fireSuccess } = makeGeoMock();
     const sensor = new GpsSensor();
     sensor.start();
     const promise = sensor.waitForFirstFix(5000);
-    fireSuccess(makePosition(MIN_ACCURACY_M));
-    const accuracy = await promise;
-    expect(accuracy).not.toBeNull();
-    expect(accuracy!).toBeLessThanOrEqual(MIN_ACCURACY_M);
+    fireSuccess(makePosition(MIN_ACCURACY_M, { altitude: 12.0 }));
+    expect(await promise).toBeLessThanOrEqual(MIN_ACCURACY_M);
+    expect(sensor.isGpsFix).toBe(true);
   });
 
-  it('accuracy between MIN_ACCURACY_M and IP_ACCURACY_M: poor fix, not IP-based', async () => {
+  it('poor GNSS fix: accuracy > MIN_ACCURACY_M and altitude present → not network', async () => {
     const { fireSuccess } = makeGeoMock();
     const sensor = new GpsSensor();
     sensor.start();
-    const midAccuracy = Math.round((MIN_ACCURACY_M + IP_ACCURACY_M) / 2);
     const promise = sensor.waitForFirstFix(5000);
-    fireSuccess(makePosition(midAccuracy));
-    const accuracy = await promise;
-    expect(accuracy!).toBeGreaterThan(MIN_ACCURACY_M);
-    expect(accuracy!).toBeLessThan(IP_ACCURACY_M);
+    fireSuccess(makePosition(150, { altitude: 5.0 }));
+    expect(await promise).toBeGreaterThan(MIN_ACCURACY_M);
+    expect(sensor.isGpsFix).toBe(true);
   });
 
-  it('accuracy >= IP_ACCURACY_M: IP-based fix', async () => {
+  it('network fix: altitude absent → isGpsFix false regardless of reported accuracy', async () => {
     const { fireSuccess } = makeGeoMock();
     const sensor = new GpsSensor();
     sensor.start();
     const promise = sensor.waitForFirstFix(5000);
-    fireSuccess(makePosition(IP_ACCURACY_M));
-    const accuracy = await promise;
-    expect(accuracy!).toBeGreaterThanOrEqual(IP_ACCURACY_M);
+    fireSuccess(makePosition(10, { altitude: null })); // high accuracy but no altitude
+    await promise;
+    expect(sensor.isGpsFix).toBe(false);
+  });
+
+  it('zero accuracy with altitude present: isGpsFix true, accuracy 0 (browser bug)', async () => {
+    const { fireSuccess } = makeGeoMock();
+    const sensor = new GpsSensor();
+    sensor.start();
+    const promise = sensor.waitForFirstFix(5000);
+    fireSuccess(makePosition(0, { altitude: 8.0 }));
+    expect(await promise).toBe(0);
+    expect(sensor.isGpsFix).toBe(true);
   });
 });
