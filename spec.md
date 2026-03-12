@@ -76,7 +76,7 @@ All time-sensitive parameters use time constants (not per-sample alphas) — rat
 5. Signed signal smoothed (STROKE_TAU_S = 0.08 s). Stroke detection (Hermsen §4.4.2):
    - Dynamic threshold = deepest of 5 recent troughs × 0.6, floor −0.3 m/s²
    - Peak time = midpoint of threshold down-crossing and up-crossing (more stable than raw minimum)
-6. SPM = 60000 / rolling mean of last 4 inter-peak intervals.
+6. SPM = 60000 / rolling mean of last BUFFER_SIZE inter-peak intervals.
 7. SPM cleared after 6000 ms with no stroke (Hermsen §4.5).
 8. `hasMotion` = linear magnitude > 1.5 m/s², cleared after 500 ms of stillness.
 

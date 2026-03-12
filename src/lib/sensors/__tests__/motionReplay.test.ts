@@ -26,27 +26,28 @@ describe.skipIf(!existsSync(FIXTURE_PATH))('motionReplay', () => {
     expect(samples.length).toBeGreaterThan(0);
 
     let state = createInitialState();
-    const output: { t_s: number; spm: number | null; stroke: boolean }[] = [];
+    const output: { t_s: number; spm: number | null }[] = [];
 
     for (const sample of samples) {
-      const prevPeakTime = state.lastPeakTime;
+      const prevSpm = state.spm;
       state = processMotionSample(sample, state);
-      output.push({
-        t_s: (sample.timestamp - samples[0].timestamp) / 1000,
-        spm: state.spm,
-        stroke: state.lastPeakTime !== prevPeakTime,
-      });
+      if (state.spm !== prevSpm) {
+        output.push({
+          t_s: (sample.timestamp - samples[0].timestamp) / 1000,
+          spm: state.spm,
+        });
+      }
     }
 
     const outCsv =
-      't_s,spm,stroke\n' +
+      't_s,spm\n' +
       output
-        .map((r) => `${r.t_s.toFixed(3)},${r.spm ?? ''},${r.stroke ? 1 : 0}`)
+        .map((r) => `${r.t_s.toFixed(3)},${r.spm ?? ''}`)
         .join('\n');
     writeFileSync(OUTPUT_PATH, outCsv);
 
     // Ensure algorithm ran without crash
-    expect(output.length).toBe(samples.length);
-    console.log(`Replayed ${samples.length} samples → ${OUTPUT_PATH}`);
+    expect(samples.length).toBeGreaterThan(0);
+    console.log(`Replayed ${samples.length} samples → ${output.length} spm updates → ${OUTPUT_PATH}`);
   });
 });

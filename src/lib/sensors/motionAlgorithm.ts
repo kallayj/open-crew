@@ -9,7 +9,7 @@ export const SETTLE_TIME_MS = 1500;
 export const MOTION_TIMEOUT_MS = 500;
 export const MIN_STROKE_INTERVAL_MS = 800;
 export const NOISE_THRESHOLD = 1.5;
-export const BUFFER_SIZE = 4;
+export const BUFFER_SIZE = 1;
 
 export const THRESHOLD_FLOOR = -0.3;
 export const THRESHOLD_MULTIPLIER = 0.6;
@@ -173,7 +173,7 @@ export function processMotionSample(sample: MotionSample, state: AlgorithmState)
   // Track most negative value in current inter-stroke window
   state.windowMin = Math.min(state.windowMin, val);
 
-  // Threshold-crossing detection (Hermsen §4.4.2)
+  // Threshold-crossing detection (Hermsen 4.4.2)
   if (!state.belowThreshold && val < state.threshold) {
     // Down-crossing: entering trough
     state.belowThreshold = true;
@@ -211,7 +211,7 @@ export function processMotionSample(sample: MotionSample, state: AlgorithmState)
     }
   }
 
-  // Clear stale SPM if no stroke detected for REST_TIMEOUT_MS (Hermsen §4.5)
+  // Clear stale SPM if no stroke detected for REST_TIMEOUT_MS (Hermsen 4.5)
   if (state.spm !== null && state.lastPeakTime !== null && now - state.lastPeakTime > REST_TIMEOUT_MS) {
     state.spm = null;
     state.strokePeriodMs = null;
