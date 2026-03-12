@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { MotionSensor } from '$lib/sensors/motion.svelte';
   import type { GpsSensor } from '$lib/sensors/gps.svelte';
-  import { MIN_ACCURACY_M, IP_ACCURACY_M } from '$lib/sensors/gps.svelte';
+  import { MIN_ACCURACY_M } from '$lib/sensors/gps.svelte';
+  import LocationStatus from '$lib/LocationStatus.svelte';
 
   let { motion, gps, oncontinue }: {
     motion: MotionSensor;
@@ -23,9 +24,9 @@
 
     if (gps.permissionState === 'granted') {
       const accuracy = await gps.waitForFirstFix(3000);
-      if (accuracy !== null && accuracy > MIN_ACCURACY_M) {
-        gpsIpBased = accuracy >= IP_ACCURACY_M;
-        gpsPoorAccuracy = !gpsIpBased;
+      if (accuracy !== null) {
+        gpsIpBased = gps.isGpsFix === false;
+        gpsPoorAccuracy = !gpsIpBased && (accuracy <= 0 || accuracy > MIN_ACCURACY_M);
       }
     }
 
@@ -45,17 +46,9 @@
   const motionState = $derived(motion.permissionState);
   const gpsState = $derived(gps.permissionState);
   const gpsNotIdeal = $derived(gpsIpBased || gpsPoorAccuracy);
-
-  const degradeMsg = $derived.by(() => {
-    const motionDenied = motionState === 'denied';
-    const gpsOut = gpsState === 'denied' || gpsIpBased;
-    if (motionDenied && gpsOut) return 'No sensors available — app is nonfunctional.';
-    if (motionDenied) return 'Motion unavailable: no stroke rate, heading, or roll.';
-    if (gpsState === 'denied') return 'GPS unavailable: no speed or position.';
-    if (gpsIpBased) return 'GPS is returning an approximate location, likely IP-based. Speed will be enabled if an accurate fix becomes available.';
-    if (gpsPoorAccuracy) return `GPS accuracy is currently poor (${Math.round(gps.accuracy!)}m). Speed will be enabled once accuracy improves below ${MIN_ACCURACY_M}m.`;
-    return '';
-  });
+  const bothOut = $derived(
+    motionState === 'denied' && (gpsState === 'denied' || gpsIpBased)
+  );
 </script>
 
 <div class="overlay" role="dialog" aria-modal="true" aria-label="Sensor setup">
@@ -89,7 +82,7 @@
         </button>
       </div>
     {:else}
-      <!-- Degraded: show what was and wasn't granted -->
+      <!-- Degraded: show sensor status and any issues -->
       <div class="sensor-list">
         <div class="sensor-row">
           <div class="sensor-info">
@@ -106,6 +99,10 @@
           <div class="sensor-info">
             <div class="sensor-name">GPS</div>
             <div class="sensor-desc">Speed · Pace · Position</div>
+            {#if gps.position !== null}
+              <div class="sensor-desc">{gps.position.lat.toFixed(5)}, {gps.position.lon.toFixed(5)}</div>
+              <div class="sensor-desc">source: {gps.isGpsFix ? 'GPS' : 'network'}</div>
+            {/if}
           </div>
           <div class="sensor-status"
             class:granted={gpsState === 'granted' && !gpsNotIdeal}
@@ -116,10 +113,24 @@
         </div>
       </div>
 
-      <div class="degrade-msg" role="alert">
-        <span class="warn-icon">⚠</span>
-        {degradeMsg}
-      </div>
+      {#if bothOut}
+        <div class="motion-msg error" role="alert">
+          <span class="icon">&#x26A0;</span>No sensors available — app is nonfunctional.
+        </div>
+      {:else if motionState === 'denied'}
+        <div class="motion-msg warn" role="alert">
+          <span class="icon">&#x26A0;</span>Motion unavailable: no stroke rate, heading, or roll.
+        </div>
+      {/if}
+
+      {#if !bothOut}
+        <LocationStatus
+          variant="panel"
+          permissionState={gpsState}
+          accuracy={gps.accuracy}
+          isGpsFix={gps.isGpsFix}
+        />
+      {/if}
 
       <label class="media-session-row">
         <input type="checkbox" bind:checked={mediaSession} />
@@ -202,10 +213,8 @@
   .sensor-status.ip-based { color: #ffab40; }
   .sensor-status.denied   { color: #ff5252; }
 
-  .degrade-msg {
+  .motion-msg {
     font-size: 0.75rem;
-    color: #ffab40;
-    border: 1px solid #ffab40;
     padding: 0.6rem 0.75rem;
     display: flex;
     gap: 0.5rem;
@@ -213,9 +222,10 @@
     line-height: 1.4;
   }
 
-  .warn-icon {
-    flex-shrink: 0;
-  }
+  .motion-msg.error { color: #ff5252; border: 1px solid #ff5252; }
+  .motion-msg.warn  { color: #ffab40; border: 1px solid #ffab40; }
+
+  .icon { flex-shrink: 0; }
 
   .media-session-row {
     display: flex;
