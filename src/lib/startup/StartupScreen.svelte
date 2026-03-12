@@ -33,8 +33,7 @@
     const anyDegraded =
       motion.permissionState === 'denied' ||
       gps.permissionState === 'denied' ||
-      gpsIpBased ||
-      gpsPoorAccuracy;
+      gpsIpBased;
 
     if (anyDegraded) {
       phase = 'degraded';
