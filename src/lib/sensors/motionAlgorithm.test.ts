@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUFFER_SIZE,
-  DISAMBIG_WINDOW_MS,
   MIN_STROKE_INTERVAL_MS,
   REST_TIMEOUT_MS,
   SETTLE_TIME_MS,
@@ -16,7 +15,7 @@ import {
 
 /**
  * Generate samples at `hz` Hz for `durationMs` ms starting at `startMs`.
- * x = A * sin(2π * f * t), z = 9.8 (gravity), y = 0.
+ * Surge signal on x or y axis; z = 9.8 (gravity).
  */
 function sineSamples(
   startMs: number,
@@ -24,14 +23,17 @@ function sineSamples(
   hz: number,
   strokesPerMin: number,
   amplitudeMs2 = 2.5,
+  opts: { axis?: 'x' | 'y' } = {},
 ): MotionSample[] {
+  const { axis = 'x' } = opts;
   const dt = 1000 / hz;
-  const f = strokesPerMin / 60; // Hz
+  const f = strokesPerMin / 60;
   const samples: MotionSample[] = [];
   for (let t = 0; t <= durationMs; t += dt) {
+    const surge = amplitudeMs2 * Math.sin(2 * Math.PI * f * (t / 1000));
     samples.push({
-      x: amplitudeMs2 * Math.sin(2 * Math.PI * f * (t / 1000)),
-      y: 0,
+      x: axis === 'x' ? surge : 0,
+      y: axis === 'y' ? surge : 0,
       z: 9.8,
       timestamp: startMs + t,
     });
@@ -55,13 +57,11 @@ describe('createInitialState', () => {
     expect(s.spm).toBeNull();
     expect(s.hasMotion).toBe(false);
     expect(s.gravity).toBeNull();
-    expect(s.disambigDone).toBe(false);
-    expect(s.signFlip).toBe(1);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Settle + disambiguation
+// Settle period
 // ---------------------------------------------------------------------------
 
 describe('settle period', () => {
@@ -73,11 +73,12 @@ describe('settle period', () => {
     expect(state.lastPeakTime).toBeNull();
   });
 
-  it('does not detect strokes before disambiguation window closes', () => {
-    // 3 seconds — past settle (1.5s) but inside disambig window (settle+3s = 4.5s)
-    const samples = sineSamples(0, 3000, 50, 30);
+  it('detects strokes as soon as settle elapses', () => {
+    // 6.5 s at 30 SPM: first interval available ~3.5 s after settle.
+    // No disambiguation window should delay detection beyond SETTLE_TIME_MS.
+    const samples = sineSamples(0, 6500, 50, 30);
     const state = replaySamples(samples);
-    expect(state.spm).toBeNull();
+    expect(state.spm).not.toBeNull();
   });
 });
 
@@ -86,9 +87,7 @@ describe('settle period', () => {
 // ---------------------------------------------------------------------------
 
 describe('synthetic steady-state rowing', () => {
-  // Generate enough data to get past settle + disambig + 4 stroke intervals
-  // at 30 SPM (period 2000 ms): need settle(1500) + disambig(3000) + ~8000ms = ~12500ms
-  // Use 20 seconds to be safe.
+  // settle(1500) + 4 intervals at 30 SPM (8000 ms) + margin = 20 s
   const SAMPLE_HZ = 50;
   const TARGET_SPM = 30;
   const samples = sineSamples(0, 20_000, SAMPLE_HZ, TARGET_SPM, 2.5);
@@ -117,13 +116,40 @@ describe('synthetic steady-state rowing', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Axis reorientation — self-healing after device is remounted or rotated
+//
+// A 90° yaw rotation moves the stroke signal from one horizontal axis to
+// another. The dominant axis EMA (τ = 2 s) re-adapts automatically.
+// Forward direction (bow vs. stern sign) is not tracked here — it is derived
+// from the GPS track at speed and is outside the motion algorithm's scope.
+// ---------------------------------------------------------------------------
+
+describe('axis reorientation', () => {
+  it('recovers SPM after dominant axis switches from x to y', () => {
+    const TARGET_SPM = 30;
+
+    // Warm up on x-axis for 20 s.
+    const warmup = sineSamples(0, 20_000, 50, TARGET_SPM, 2.5, { axis: 'x' });
+    let state = createInitialState();
+    for (const s of warmup) state = processMotionSample(s, state);
+    expect(state.spm).not.toBeNull();
+
+    // Continue on y-axis. AXIS_TAU_S = 2 s, so 15 s is well past adaptation.
+    const after = sineSamples(20_000, 15_000, 50, TARGET_SPM, 2.5, { axis: 'y' });
+    for (const s of after) state = processMotionSample(s, state);
+
+    expect(state.spm).not.toBeNull();
+    expect(state.spm!).toBeGreaterThan(TARGET_SPM - 5);
+    expect(state.spm!).toBeLessThan(TARGET_SPM + 5);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // REST_TIMEOUT: SPM clears after prolonged silence
 // ---------------------------------------------------------------------------
 
 describe('rest timeout', () => {
   it('clears spm after REST_TIMEOUT_MS of no strokes', () => {
-    // Build up SPM at 30 SPM for 20 s, then send a single still sample
-    // REST_TIMEOUT_MS + 1 ms after the last peak.
     const activeSamples = sineSamples(0, 20_000, 50, 30, 2.5);
 
     let state = createInitialState();
@@ -132,7 +158,6 @@ describe('rest timeout', () => {
     expect(state.spm).not.toBeNull();
     const lastPeak = state.lastPeakTime!;
 
-    // Send one still sample well past the rest timeout
     const stillTimestamp = lastPeak + REST_TIMEOUT_MS + 1;
     state = processMotionSample({ x: 0, y: 0, z: 9.8, timestamp: stillTimestamp }, state);
 
@@ -147,32 +172,18 @@ describe('rest timeout', () => {
 
 describe('stroke debounce', () => {
   it('does not count an interval shorter than MIN_STROKE_INTERVAL_MS', () => {
-    // Two peaks separated by less than MIN_STROKE_INTERVAL_MS should not advance lastPeakTime.
-    // We test this by checking that intervalBuffer stays empty after a too-short crossing.
-    // Seed the algorithm past settle + disambig with 30 SPM to get lastPeakTime set.
     const warmup = sineSamples(0, 20_000, 50, 30, 2.5);
     let state = createInitialState();
     for (const s of warmup) state = processMotionSample(s, state);
 
-    // Record current state
     const peakBefore = state.lastPeakTime;
     const bufferLenBefore = state.intervalBuffer.length;
 
-    // Manually force a fake crossing (too-short interval):
-    // inject a sample that is just below threshold, then just above,
-    // with the total window being < MIN_STROKE_INTERVAL_MS after the last peak.
     if (peakBefore !== null) {
       const tooSoon = peakBefore + MIN_STROKE_INTERVAL_MS - 100;
-      // Drive below threshold
-      const forceDown = { x: -5, y: 0, z: 9.8, timestamp: tooSoon };
-      // Drive back above threshold
-      const forceUp = { x: 5, y: 0, z: 9.8, timestamp: tooSoon + 50 };
+      state = processMotionSample({ x: -5, y: 0, z: 9.8, timestamp: tooSoon }, state);
+      state = processMotionSample({ x: 5, y: 0, z: 9.8, timestamp: tooSoon + 50 }, state);
 
-      state = processMotionSample(forceDown, state);
-      state = processMotionSample(forceUp, state);
-
-      // lastPeakTime should NOT have advanced and buffer should not have grown
-      // (interval < MIN_STROKE_INTERVAL_MS was rejected)
       expect(state.intervalBuffer.length).toBeLessThanOrEqual(bufferLenBefore);
     }
   });

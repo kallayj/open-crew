@@ -61,23 +61,24 @@ Media Session API integration for start/reset via Bluetooth or headphone remotes
 
 ### Forward axis and stroke rate
 
-The device's forward axis is the axis of periodic acceleration perpendicular to gravity, detected automatically from the accelerometer during rowing. This is self-healing — no user calibration required. Stroke rate is derived from the same signal; the two cannot be separated.
+The device's forward axis is the horizontal axis of greatest periodic acceleration, detected automatically from the accelerometer during rowing. Stroke rate is derived from the same signal; the two cannot be separated.
+
+The forward *direction* (bow vs. stern) cannot be determined from the accelerometer alone without ambiguity — backing strokes produce the same signal as forward strokes with an inverted sign. It is instead derived from the GPS track at speed (see Heading below).
 
 #### Algorithm
 
-All time-sensitive parameters use time constants (not per-sample alphas) — rate-independent across 10–60 Hz devices. Closely follows Hermsen (2013) §4.3.2 + §4.4.2.
+All time-sensitive parameters use time constants (not per-sample alphas) — rate-independent across 10–60 Hz devices. Based on Hermsen (2013) §4.3.2 + §4.4.2; see README for divergences.
 
 1. Gravity vector seeded from first sample, updated with time-constant filter (GRAVITY_TAU_S = 3 s).
 2. Linear accel = `accelerationIncludingGravity` − gravity. Works on Android (no `e.acceleration`).
 3. Vertical component subtracted → horizontal (surge) vector (3D, perpendicular to gravity).
 4. Dominant horizontal axis tracked via slow EMA of |component| (AXIS_TAU_S = 2 s). Current value of dominant axis signs the horizontal magnitude → **signed** surge signal.
-5. Forward/backward disambiguation (Hermsen §4.3): after SETTLE + DISAMBIG_WINDOW (1.5 + 3 s), if |max| > |min| flip sign so catch is always the negative peak.
-6. Signed signal smoothed (STROKE_TAU_S = 0.08 s). Stroke detection targets **negative catch peaks** (Hermsen §4.4.2):
+5. Signed signal smoothed (STROKE_TAU_S = 0.08 s). Stroke detection (Hermsen §4.4.2):
    - Dynamic threshold = deepest of 5 recent troughs × 0.6, floor −0.3 m/s²
    - Peak time = midpoint of threshold down-crossing and up-crossing (more stable than raw minimum)
-7. SPM = 60000 / rolling mean of last 4 inter-peak intervals.
-8. SPM cleared after 6000 ms with no stroke (Hermsen §4.5).
-9. `hasMotion` = linear magnitude > 1.5 m/s², cleared after 500 ms of stillness.
+6. SPM = 60000 / rolling mean of last 4 inter-peak intervals.
+7. SPM cleared after 6000 ms with no stroke (Hermsen §4.5).
+8. `hasMotion` = linear magnitude > 1.5 m/s², cleared after 500 ms of stillness.
 
 ### GPS speed and pace
 
@@ -90,13 +91,15 @@ All time-sensitive parameters use time constants (not per-sample alphas) — rat
 
 ### Heading
 
-- **At rest:** IMU absolute orientation (`DeviceOrientationAbsolute`) used while the boat is being pointed.
-- **Underway:** Switch to GPS track heading (if available) once speed exceeds threshold (~0.5–1 m/s). Speed threshold alone is the switch condition.
+- **Underway:** GPS track heading, once speed exceeds threshold (~0.5–1 m/s). Available immediately; unambiguous about which end is the bow.
+- **At rest:** IMU absolute orientation (`DeviceOrientationAbsolute`) corrected by the boat-device heading offset. Only available after the offset has been established (see Calibration). Falls back to GPS track if offset is not yet established.
 - **Sanity check:** Large divergence between IMU heading and GPS track at speed indicates sensor error (GPS multipath, magnetometer interference); flag but do not use as switch condition.
+
+The order of availability is intentional: GPS track heading comes first, IMU heading at rest is a derived capability that requires a prior forward rowing stint at speed.
 
 ### Repositioning detection
 
-Angular velocity from the gyroscope significantly above ~12°/s (the maximum boat turn rate for a shell taking at least 30 seconds to spin 360°) indicates device repositioning rather than boat turning. On detection, recalibrate the stored boat-device heading offset.
+Angular velocity from the gyroscope significantly above ~12°/s (the maximum boat turn rate for a shell taking at least 30 seconds to spin 360°) indicates device repositioning rather than boat turning. On detection, invalidate the boat-device heading offset; it will be re-derived on the next above-threshold forward rowing stint.
 
 This feature requires `DeviceOrientationAbsolute` only insofar as heading-at-rest requires it. If absolute orientation is unavailable, repositioning detection is relevant only for roll.
 
@@ -196,8 +199,9 @@ Also display media session control option.
 
 | Signal | Method |
 |---|---|
-| Forward axis | Automatic, self-healing from stroke detection |
-| Boat - Device Heading offset | Derived from forward axis, latest value remembered for at-rest pointing; cleared on repositioning detection |
+| Forward axis (dominant horizontal axis) | Automatic from stroke detection; self-healing via dominant axis EMA |
+| Forward direction (bow vs. stern sign) | Derived from GPS track at first above-threshold speed after app start or gyro-detected repositioning; stored until next repositioning event |
+| Boat-device heading offset | Derived from forward direction + IMU absolute orientation at the moment forward direction is established; stored until next repositioning event |
 | Roll variance | No calibration required |
 | Roll offset (list) | Gravity-referenced zero when device edge is parallel to gunwales; no explicit zeroing required; zero resetting as an advanced optional feature |
 

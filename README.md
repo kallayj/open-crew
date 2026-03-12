@@ -13,9 +13,10 @@ Reads the phone's accelerometer via the `DeviceMotion` API and counts strokes pe
 1. A very slow time-constant filter (τ = 3 s) tracks the gravity vector as the phone's orientation drifts. Seeded from the first sample — no calibration period needed.
 2. Linear acceleration = `accelerationIncludingGravity` − gravity. Works on all devices including Android phones that do not expose `DeviceMotionEvent.acceleration`.
 3. The vertical component is removed, leaving the *horizontal (surge) vector* — the fore-aft acceleration of the hull, perpendicular to gravity. Assumes the phone is fixed to the boat.
-4. The dominant horizontal axis is identified from a slow EMA of each component's absolute value (τ = 2 s). The current sign of that axis is applied to the horizontal magnitude, giving a **signed surge signal** where the catch deceleration is a negative peak.
-5. A 3-second disambiguation window at startup checks if |max| > |min|. If so, the signal sign is flipped — resolving the 180° forward/backward ambiguity without knowing how the phone is mounted.
-6. The signed signal is smoothed (τ = 80 ms). Strokes are detected as **negative catch peaks** using a dynamic threshold (deepest of the 5 most recent troughs × 0.6, floor −0.3 m/s²). Hermsen validates the catch as the most temporally consistent feature of the stroke cycle.
+4. The dominant horizontal axis is identified from a slow EMA of each component's absolute value (τ = 2 s). The current sign of that axis is applied to the horizontal magnitude, giving a **signed surge signal**.
+5. The signed signal is smoothed (τ = 80 ms). Strokes are detected as threshold crossings using a dynamic threshold (deepest of the 5 most recent troughs × 0.6, floor −0.3 m/s²).
+
+> **Divergence from Hermsen §4.3:** Hermsen adds a disambiguation window to pin the signal sign (catch = negative peak) for inter-node timestamp consistency. This app does not need that: SPM is a period measurement, so the sign does not affect it. The forward direction (bow vs. stern) is needed for the boat-device heading offset, but cannot be determined from the accelerometer alone — backing strokes produce the same signal as forward strokes with an inverted sign. Instead, the forward direction is derived from the GPS track at the first above-threshold speed after startup or a gyro-detected repositioning. The disambiguation window and `signFlip` state are therefore removed entirely.
 7. Peak time is estimated as the midpoint of the threshold down-crossing and up-crossing, which is more stable than the raw signal minimum.
 8. SPM = 60000 / rolling mean of the last 4 inter-stroke intervals. Cleared after 6 s with no stroke.
 
@@ -29,7 +30,6 @@ All time-sensitive parameters use time constants, so behaviour is consistent reg
 | `STROKE_TAU_S` | 0.08 s | Surge signal smoothing. Larger = smoother but laggier. |
 | `AXIS_TAU_S` | 2 s | Dominant axis tracking. Larger = more stable but slower to adapt. |
 | `SETTLE_TIME_MS` | 1500 ms | Wait before stroke detection (gravity filter settling). |
-| `DISAMBIG_WINDOW_MS` | 3000 ms | Signal collection window for forward/back orientation check. |
 | `THRESHOLD_FLOOR` | −0.3 m/s² | Minimum dynamic threshold depth (prevents noise triggers at rest). |
 | `THRESHOLD_MULTIPLIER` | 0.6 | Dynamic threshold = deepest recent trough × this value. |
 | `THRESHOLD_BUFFER_SIZE` | 5 | Number of recent troughs used to set the dynamic threshold. |
