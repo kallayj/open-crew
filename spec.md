@@ -188,6 +188,10 @@ Also display media session control option.
 | Roll variance | No calibration required |
 | Roll offset (list) | Gravity-referenced zero when device edge is parallel to gunwales; no explicit zeroing required; zero resetting as an advanced optional feature |
 
+## Miscellaneous
+
+* If ambient light detection is available, select dark/light theme as appropriate for conditions. If no detection is available, provide a dark/light theme toggle.
+
 ## Open Questions
 
 ### Stroke rate algorithm
