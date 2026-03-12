@@ -60,11 +60,11 @@
       <div class="sensor-list">
         <div class="sensor-row">
           <div class="sensor-name">Motion</div>
-          <div class="sensor-desc">Stroke rate · Heading · Roll</div>
+          <div class="sensor-desc">Stroke rate</div>
         </div>
         <div class="sensor-row">
           <div class="sensor-name">GPS</div>
-          <div class="sensor-desc">Speed · Pace · Position</div>
+          <div class="sensor-desc">Speed · Position</div>
         </div>
       </div>
 
@@ -87,7 +87,7 @@
         <div class="sensor-row">
           <div class="sensor-info">
             <div class="sensor-name">Motion</div>
-            <div class="sensor-desc">Stroke rate · Heading · Roll</div>
+            <div class="sensor-desc">Stroke rate</div>
           </div>
           <div class="sensor-status"
             class:granted={motionState === 'granted'}
@@ -98,7 +98,7 @@
         <div class="sensor-row">
           <div class="sensor-info">
             <div class="sensor-name">GPS</div>
-            <div class="sensor-desc">Speed · Pace · Position</div>
+            <div class="sensor-desc">Speed · Position</div>
             {#if gps.position !== null}
               <div class="sensor-desc">{gps.position.lat.toFixed(5)}, {gps.position.lon.toFixed(5)}</div>
               <div class="sensor-desc">source: {gps.isGpsFix ? 'GPS' : 'network'}</div>
@@ -119,7 +119,7 @@
         </div>
       {:else if motionState === 'denied'}
         <div class="motion-msg warn" role="alert">
-          <span class="icon">&#x26A0;</span>Motion unavailable: no stroke rate, heading, or roll.
+          <span class="icon">&#x26A0;</span>Motion unavailable: no stroke rate.
         </div>
       {/if}
 
