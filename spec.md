@@ -1,0 +1,209 @@
+# Rowing Shell PWA — Design Specification
+
+## Overview
+
+A free, open-source progressive web app displaying real-time rowing metrics on a mobile device fixed in a rowing shell. The device may be mounted at an arbitrary location and orientation, and may be repositioned during a session.
+
+---
+
+## Display
+
+Primary display, landscape orientation, full screen. Metrics:
+
+* Stroke rate
+* Interval time
+* Speed
+* Heading
+* Vectors to obstacles and waypoints
+* Roll variance
+* Absolute roll angle (optional, see below)
+
+---
+
+## Architecture
+
+### Type
+Single-page application with a minimal PWA layer: home screen manifest for full-screen launch and offline load after first visit. Service worker limited to app shell caching; added once the app is stable.
+
+### Dev workflow
+- Desktop browser for layout and non-sensor logic
+- Phone on localhost for sensor development
+- Deployed build (GitHub Pages or equivalent) for iOS and PWA validation
+- Mock data mode for desktop sensor simulation
+
+### Storage
+- IndexedDB for session logging
+- Asynchronous write queue to avoid blocking the sensor loop
+- Export via File System Access API or Blob URL download (CSV or JSON)
+
+### External control
+Media Session API integration for start/reset via Bluetooth or headphone remotes to avoid interaction with a damp touchscreen. Optional, as users may prefer to listen to music or to not have intervals paused by incoming phone calls.
+
+---
+
+## Sensors
+
+### Required
+| Sensor | API | Use |
+|---|---|---|
+| Accelerometer | `DeviceMotion` | Stroke rate, forward axis detection, roll angle |
+| GPS | `Geolocation` | Position, speed, track heading |
+
+### Optional / conditional
+| Sensor | API | Use |
+|---|---|---|
+| Magnetometer | `DeviceOrientationAbsolute` | Heading while stationary |
+| Gyroscope | `DeviceMotion` | Repositioning detection |
+
+---
+
+## Sensor Logic
+
+### Forward axis and stroke rate
+
+The device's forward axis is the axis of periodic acceleration perpendicular to gravity, detected automatically from the accelerometer during rowing. This is self-healing — no user calibration required. Stroke rate is derived from the same signal; the two cannot be separated.
+
+#### Algorithm
+
+All time-sensitive parameters use time constants (not per-sample alphas) — rate-independent across 10–60 Hz devices. Closely follows Hermsen (2013) §4.3.2 + §4.4.2.
+
+1. Gravity vector seeded from first sample, updated with time-constant filter (GRAVITY_TAU_S = 3 s).
+2. Linear accel = `accelerationIncludingGravity` − gravity. Works on Android (no `e.acceleration`).
+3. Vertical component subtracted → horizontal (surge) vector (3D, perpendicular to gravity).
+4. Dominant horizontal axis tracked via slow EMA of |component| (AXIS_TAU_S = 2 s). Current value of dominant axis signs the horizontal magnitude → **signed** surge signal.
+5. Forward/backward disambiguation (Hermsen §4.3): after SETTLE + DISAMBIG_WINDOW (1.5 + 3 s), if |max| > |min| flip sign so catch is always the negative peak.
+6. Signed signal smoothed (STROKE_TAU_S = 0.08 s). Stroke detection targets **negative catch peaks** (Hermsen §4.4.2):
+   - Dynamic threshold = deepest of 5 recent troughs × 0.6, floor −0.3 m/s²
+   - Peak time = midpoint of threshold down-crossing and up-crossing (more stable than raw minimum)
+7. SPM = 60000 / rolling mean of last 4 inter-peak intervals.
+8. SPM cleared after 6000 ms with no stroke (Hermsen §4.5).
+9. `hasMotion` = linear magnitude > 1.5 m/s², cleared after 500 ms of stillness.
+
+### GPS speed and pace
+
+#### Algorithm
+
+- Distance-based rolling average over the last 50 m (≈ 5 strokes).
+- Buffer of `{lat, lon, timestamp}` samples; segments stored as precomputed distances (O(1) update).
+- Speed = totalDist / totalTime; displayed as min:sec per 500 m (pace).
+- Haversine formula for segment distances.
+
+### Heading
+
+- **At rest:** IMU absolute orientation (`DeviceOrientationAbsolute`) used while the boat is being pointed.
+- **Underway:** Switch to GPS track heading (if available) once speed exceeds threshold (~0.5–1 m/s). Speed threshold alone is the switch condition.
+- **Sanity check:** Large divergence between IMU heading and GPS track at speed indicates sensor error (GPS multipath, magnetometer interference); flag but do not use as switch condition.
+
+### Repositioning detection
+
+Angular velocity from the gyroscope significantly above ~12°/s (the maximum boat turn rate for a shell taking at least 30 seconds to spin 360°) indicates device repositioning rather than boat turning. On detection, recalibrate the stored boat-device heading offset.
+
+This feature requires `DeviceOrientationAbsolute` only insofar as heading-at-rest requires it. If absolute orientation is unavailable, repositioning detection is relevant only for roll.
+
+### Roll variance
+
+Optionally displayed during rowing as a feel/feedback metric, more meaningful as post-session analysis of logged data rather than a primary live display. No zero reference needed.
+
+### Roll offset (list angle) 
+Absolute angle from level, useful for resolving disagreement about the direction and magnitude of chronic list. Requires parallel-edge mounting constraint to provide a gravity-referenced zero. 
+
+---
+
+## Waypoints and Obstacles
+
+UI treatment of waypoints and obstacles is similar but they have opposite intents: boats navigate to waypoints but want to avoid obstacles.
+
+### Goals
+Not to produce a full-featured navigation app, but to facilitate collision avoidance, keeping boats together during practices, and emergency navigation in low-visibility conditions (fog).
+
+### Common Features
+Vectors to waypoints and obstacles will be shown on a HUD-like compass window, indicated as symbols on their compass bearings with distances below. For obstacles (see below), bearings are for the point-locations, not computed nearest point of possible collision. Waypoints and obstacles should be differentiated by color and font style. 
+
+### Waypoints
+Example use cases:
+
+* In front of the boathouse, for getting home in emergency low-visibility conditions (fog)
+* Turn-around points before an obstacle
+* Meet-up point for practice/racing
+
+Represented as point-locations, not boundaries.
+
+### Obstacles
+
+#### Points with Watch Circles
+
+Things you don't want to hit. Represented as a symbol, a point, and a non-negative watch circle radius. The watch circle allows for obstacle movement (due to wind, current, and tide) or for it to occupy a circular area. Use a watch circle radius of 0 for fixed point-objects like pilings.
+
+#### Directional marks
+
+In marine navigation cardinal marks indicate a local boundary between safe and unsafe water, with the mark indicating on which side of it (north, south, east, or west) the safe water lies. These virtual marks give more control by allowing for the safe water to lie in any direction, not just cardinal ones. Represented as a symbol, a point, a direction, an obstruction length, and a watch circle radius. The direction and obstruction length create a "no go" semi-circle centered at the mark whose axis is perpendicular to the safe water direction. The watch circle is a convenience for areas marked by physical, moving buoys you don't want to hit, to eliminate the need for a separate point obstacle. The marked obstruction does not move with mark.
+
+#### Possible Collision Warning
+
+Imminent (configurable time, default 10s) collision is signalled with a flashing WAY ENOUGH! message. Collision is computed by the intersection of the GPS position circle and the area(s) represented by the obstacle (remember that a directional mark is actually two obstacles, the marked obstacle and the mark itself).
+
+##### Possible Per-session Parameter: Bow Offset
+
+Collision with fixed obstacles occurs at the bow, not the stern, and in an eight, the distance from the coxswain to the bow is substantial (~15m). If the configured collision warning time produces too many false positives but decreasing it leads to false negatives, a bow offset may need to be introduced.
+
+### Provisioning
+
+To simplify the UI, these will be defined at build time -- different versions can be distributed per club/waterway.
+
+---
+
+## Permissions and Sensor Availability
+
+### Permission models
+
+- **Geolocation:** explicit user prompt, all platforms.
+- **DeviceMotion / DeviceOrientationAbsolute:** no prompt on Android; iOS 13+ requires `requestPermission()` gated on a user gesture, granted per origin.
+- **DeviceOrientationAbsolute unavailable vs. denied:** functionally equivalent for degradation purposes; distinguish only to show actionable UI for permission recovery.
+- iOS permission state is not queryable before requesting.
+
+### Degradation matrix
+
+| Geolocation | Motion | Consequence |
+|---|---|---|
+| granted | granted | Full functionality |
+| granted | denied/unavailable | Speed and position only; no stroke rate, no heading |
+| denied/unavailable | granted | Stroke rate, heading, and roll; no speed, position, or track |
+| denied/unavailable | denied/unavailable | Nonfunctional |
+| granted | granted, no magnetometer | Full except heading at rest is unavailable; GPS track only |
+
+### Startup flow
+
+Request permissions explicitly with UI context before attempting sensor access. Detect available sensors after grant and enter the appropriate degraded mode with clear labeling. No silent failures or unexplained zeros.
+
+Also display media session control option.
+
+---
+
+## Calibration
+
+| Signal | Method |
+|---|---|
+| Forward axis | Automatic, self-healing from stroke detection |
+| Boat - Device Heading offset | Derived from forward axis, latest value remembered for at-rest pointing; cleared on repositioning detection |
+| Roll variance | No calibration required |
+| Roll offset (list) | Gravity-referenced zero when device edge is parallel to gunwales; no explicit zeroing required; zero resetting as an advanced optional feature |
+
+## Open Questions
+
+### Stroke rate algorithm
+
+From the Open Source Stroke Coach (Arduino implementation):
+
+- **IIR low-pass filter per axis** before detection — potentially cleaner than the current EMA approach.
+- **3-stroke rolling average on SPM output** for display stability — currently using 4-interval rolling mean of inter-peak intervals; a separate output smoother may reduce display jitter.
+- **1000 ms refractory period** as a simple and effective debounce — limits max detectable rate to 60 SPM; trade-off against catching high-rate errors.
+
+---
+
+## Roadmap
+
+1. MVP (Cox Box feature parity): Stroke rate, Interval time, Speed
+2. Heading
+3. Obstacles and waypoints
+4. Roll variance with session memory
+5. Absolute roll angle (optional, see below)
