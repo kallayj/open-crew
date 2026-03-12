@@ -7,8 +7,8 @@ import type { MotionSample } from '../motionAlgorithm';
  *   - time: Unix epoch in nanoseconds
  *   - x, y, z: acceleration in m/s² (including gravity)
  *
- * Verify before use: at rest, z should be ≈ 9.8 (gravity included).
- * If z ≈ 0, you have a Linear Acceleration export — the algorithm needs
+ * Verify before use: at rest, magnitude should be ≈ 9.8 (gravity included).
+ * If resting magnitude ≈ 0, you have a Linear Acceleration export — the algorithm needs
  * gravity-including values, so use the Accelerometer export.
  */
 export function parseSensorLoggerCsv(csv: string): MotionSample[] {
