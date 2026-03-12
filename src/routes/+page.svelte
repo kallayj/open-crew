@@ -6,9 +6,17 @@
   import StrokeRate from '$lib/instruments/StrokeRate.svelte';
   import BoatSpeed from '$lib/instruments/BoatSpeed.svelte';
   import Stopwatch from '$lib/instruments/Stopwatch.svelte';
+  import StartupScreen from '$lib/startup/StartupScreen.svelte';
 
   const motion = new MotionSensor();
   const gps = new GpsSensor();
+
+  let showStartup = $state(true);
+
+  function onStartupContinue() {
+    showStartup = false;
+    checkBanner();
+  }
 
   // Screen Wake Lock
   let wakeLock: WakeLockSentinel | null = null;
@@ -22,12 +30,12 @@
     }
   }
 
-  // Fullscreen banner
+  // Fullscreen banner (shown post-startup if user leaves fullscreen)
   let showBanner = $state(false);
   let bannerDismissed = $state(false);
 
   function checkBanner() {
-    if (bannerDismissed) return;
+    if (bannerDismissed || showStartup) return;
     const isLandscape = window.matchMedia('(orientation: landscape)').matches;
     const isFullscreen = !!document.fullscreenElement;
     showBanner = isLandscape && !isFullscreen;
@@ -48,18 +56,6 @@
     localStorage.setItem('fsbannerDismissed', '1');
   }
 
-  // First interaction → fullscreen + permissions
-  let initialized = false;
-
-  async function handleFirstInteraction() {
-    if (initialized) return;
-    initialized = true;
-
-    await requestFullscreen();
-    await motion.requestPermission();
-    gps.start();
-  }
-
   onMount(() => {
     bannerDismissed = !!localStorage.getItem('fsbannerDismissed');
 
@@ -69,16 +65,10 @@
       if (document.visibilityState === 'visible') acquireWakeLock();
     });
 
-    // Orientation / fullscreen change events
     const updateBanner = () => checkBanner();
     screen.orientation?.addEventListener('change', updateBanner);
     document.addEventListener('fullscreenchange', updateBanner);
     window.addEventListener('resize', updateBanner);
-    checkBanner();
-
-    // Attach first-interaction handler
-    document.addEventListener('click', handleFirstInteraction, { once: true });
-    document.addEventListener('touchstart', handleFirstInteraction, { once: true });
 
     return () => {
       motion.destroy();
@@ -104,7 +94,7 @@
     <StrokeRate spm={motion.spm} permissionState={motion.permissionState} />
   </div>
   <div class="panel">
-    <BoatSpeed pace={gps.pace} permissionState={gps.permissionState} />
+    <BoatSpeed pace={gps.pace} permissionState={gps.permissionState} accuracy={gps.accuracy} />
   </div>
   <div class="panel">
     <Stopwatch hasMotion={motion.hasMotion} />
@@ -114,6 +104,10 @@
 <div class="build-badge" class:dev={__BUILD_TIME__.endsWith('-dev')}>
   {__BUILD_TIME__}
 </div>
+
+{#if showStartup}
+  <StartupScreen {motion} {gps} oncontinue={onStartupContinue} />
+{/if}
 
 {#if showBanner}
   <div class="fs-banner" role="banner">

@@ -1,7 +1,8 @@
 <script lang="ts">
-  let { pace, permissionState }: {
+  let { pace, permissionState, accuracy }: {
     pace: string | null;
     permissionState: 'pending' | 'granted' | 'denied';
+    accuracy: number | null;
   } = $props();
 </script>
 
@@ -11,6 +12,8 @@
   <div class="unit">/500m</div>
   {#if permissionState === 'denied'}
     <div class="status error">GPS denied</div>
+  {:else if permissionState === 'granted' && accuracy !== null}
+    <div class="accuracy" class:faded={pace !== null}>GPS &plusmn;{Math.round(accuracy)}m</div>
   {:else if permissionState === 'pending'}
     <div class="status muted">Acquiring GPS&hellip;</div>
   {/if}
@@ -62,5 +65,17 @@
 
   .muted {
     color: var(--text-muted);
+  }
+
+  .accuracy {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+    margin-top: 0.25rem;
+    transition: opacity 1s;
+  }
+
+  .accuracy.faded {
+    opacity: 0.3;
   }
 </style>
