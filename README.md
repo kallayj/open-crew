@@ -44,11 +44,7 @@ All time-sensitive parameters use time constants, so behaviour is consistent reg
 ### Boat Speed / Pace
 Uses the `Geolocation` API (`watchPosition` with high accuracy) and displays speed as a split time in min:sec per 500 m — the standard rowing pace unit.
 
-**Algorithm:** distance-based rolling average. Each GPS fix is stored with its position and timestamp. The sensor maintains a buffer spanning the last `distanceWindowM` metres of travel (default 50 m). Speed = total distance in buffer / elapsed time. The buffer fills naturally from startup, so a reading appears after the first two fixes.
-
-50 m ≈ 5 strokes at 10 m/stroke. Set `distanceWindowM` lower for a more responsive but noisier reading; higher for a smoother reading that lags more on speed changes.
-
-Haversine formula is used for segment distances between consecutive fixes, giving accuracy to within ~1 m at the scales involved.
+**Algorithm:** rolling average of speed samples over a `BUFFER_TIME_MS` (10 s) window. Each GPS fix reports speed directly via `GeolocationCoordinates.speed` (m/s). Samples are buffered and averaged; the result is converted to min:sec per 500 m for display. Fixes with accuracy worse than `MIN_ACCURACY_M` (20 m) or null speed are ignored.
 
 ### Stopwatch
 Tap **Start** to arm the stopwatch. It starts automatically when `hasMotion` is true (i.e. the first rowing stroke after arming). Tap **Pause** to pause; tap **Resume** to re-arm and wait for motion again. Long-press the time display (≥ 650 ms) to reset.

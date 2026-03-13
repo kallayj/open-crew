@@ -84,10 +84,9 @@ All time-sensitive parameters use time constants (not per-sample alphas) — rat
 
 #### Algorithm
 
-- Distance-based rolling average over the last 50 m (≈ 5 strokes).
-- Buffer of `{lat, lon, timestamp}` samples; segments stored as precomputed distances (O(1) update).
-- Speed = totalDist / totalTime; displayed as min:sec per 500 m (pace).
-- Haversine formula for segment distances.
+- Rolling average of `GeolocationCoordinates.speed` (m/s) samples over a BUFFER_TIME_MS window.
+- Fixes with accuracy > `MIN_ACCURACY_M` (20 m) or null speed are ignored.
+- Average speed converted to min:sec per 500 m (pace) for display.
 
 ### Heading
 
