@@ -9,10 +9,6 @@
   let startTime: number | null = null;
   let pausedAt: number | null = null;
   let rafId: number | null = null;
-  let holdTimer: ReturnType<typeof setTimeout> | null = null;
-  let holding = $state(false);
-  let didReset = false;
-  const HOLD_MS = 650;
 
   // Auto-start when motion is newly detected (only when already armed)
   $effect(() => {
@@ -94,48 +90,23 @@
   }
 
   function toggleRunning(): void {
-    if (didReset) { didReset = false; return; }
     if (watchState === 'running') pauseWatch();
     else if (watchState === 'paused') watchState = 'ready';
     else if (watchState === 'ready') watchState = 'paused';
   }
 
-  function holdStart(): void {
-    if (watchState === 'ready') return;
-    holding = true;
-    holdTimer = setTimeout(() => {
-      holding = false;
-      didReset = true;
-      resetWatch();
-    }, HOLD_MS);
-  }
-
-  function holdEnd(): void {
-    if (holdTimer !== null) {
-      clearTimeout(holdTimer);
-      holdTimer = null;
-    }
-    holding = false;
-  }
-
   const displayTime = $derived(watchState === 'ready' ? 'READY' : elapsed === 0 ? '--:--.--' : formatStopwatch(elapsed));
   const btnLabel = $derived(watchState === 'running' ? 'Pause' : watchState === 'ready' ? 'Cancel' : elapsed === 0 ? 'Start' : 'Resume');
+  const showReset = $derived(watchState === 'paused' && elapsed > 0);
 </script>
 
 <div class="instrument">
   <div class="label">STOPWATCH</div>
 
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="value"
     class:active={watchState === 'running'}
     class:ready={watchState === 'ready' || elapsed === 0}
-    class:holding
-    onpointerdown={holdStart}
-    onpointerup={holdEnd}
-    onpointercancel={holdEnd}
-    onpointerleave={holdEnd}
-    oncontextmenu={(e) => e.preventDefault()}
   >
     {displayTime}
   </div>
@@ -146,6 +117,9 @@
       class:primary={watchState !== 'running'}
       onclick={toggleRunning}
     >{btnLabel}</button>
+    {#if showReset}
+      <button class="btn danger" onclick={resetWatch}>Reset</button>
+    {/if}
   </div>
 </div>
 
@@ -172,11 +146,7 @@
     line-height: 1;
     color: var(--text-muted);
     transition: color 0.3s;
-    cursor: default;
     user-select: none;
-    touch-action: none;
-    border-radius: 0.4rem;
-    padding: 0.1em 0.2em;
   }
 
   .value.active {
@@ -187,15 +157,6 @@
     font-size: clamp(1.2rem, 5vw, 3rem);
     letter-spacing: 0.1em;
     color: var(--text-muted);
-  }
-
-  .value.holding {
-    animation: hold-fill 650ms linear forwards;
-  }
-
-  @keyframes hold-fill {
-    from { background: transparent; }
-    to   { background: var(--error-flash-bg); color: #ff5252; }
   }
 
   .controls {
@@ -225,5 +186,10 @@
   .btn.primary {
     border-color: var(--accent);
     color: var(--accent);
+  }
+
+  .btn.danger {
+    border-color: #ff5252;
+    color: #ff5252;
   }
 </style>
