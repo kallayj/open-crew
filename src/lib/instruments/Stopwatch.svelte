@@ -58,7 +58,7 @@
   }
 
   function startWatch(): void {
-    if (watchState === 'paused' && pausedAt !== null) {
+    if (pausedAt !== null) {
       startTime = performance.now() - pausedAt;
     } else {
       startTime = performance.now();
