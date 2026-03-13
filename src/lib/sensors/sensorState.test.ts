@@ -132,7 +132,44 @@ describe('GpsSensor permission state', () => {
     expect(sensor.permissionState).toBe('pending');
   });
 
-  it('PERMISSION_DENIED resolves waitForFirstFix with null immediately (iOS fix)', async () => {
+  it('PERMISSION_DENIED does not resolve waitForFirstFix early (iOS pre-check behaviour)', async () => {
+    vi.useFakeTimers();
+    let fireError: ((err: GeolocationPositionError) => void) | null = null;
+    let fireSuccess: ((pos: GeolocationPosition) => void) | null = null;
+    setGeolocation({
+      watchPosition: vi.fn((onSuccess, onError) => {
+        fireSuccess = onSuccess; fireError = onError; return 1;
+      }),
+      clearWatch: vi.fn(),
+    });
+    const sensor = new GpsSensor();
+    sensor.start();
+    const promise = sensor.waitForFirstFix(3000);
+
+    // iOS fires pre-check PERMISSION_DENIED while dialog is showing
+    fireError!({ code: 1, PERMISSION_DENIED: 1 } as GeolocationPositionError);
+    expect(sensor.permissionState).toBe('denied');
+
+    // Promise is still pending — not resolved yet
+    let resolved = false;
+    promise.then(() => { resolved = true; });
+    await Promise.resolve(); // flush microtasks
+    expect(resolved).toBe(false);
+
+    // User taps Allow → position arrives on the same watch
+    fireSuccess!({
+      coords: { accuracy: 8, latitude: 0, longitude: 0, altitude: 10,
+        altitudeAccuracy: null, heading: null, speed: null, toJSON: () => ({}) },
+      timestamp: Date.now(), toJSON: () => {},
+    } as unknown as GeolocationPosition);
+    expect(await promise).toBe(8);
+    expect(sensor.permissionState).toBe('granted');
+
+    vi.useRealTimers();
+  });
+
+  it('waitForFirstFix resolves null on timeout when user truly denies', async () => {
+    vi.useFakeTimers();
     let fireError: ((err: GeolocationPositionError) => void) | null = null;
     setGeolocation({
       watchPosition: vi.fn((_, onError) => { fireError = onError; return 1; }),
@@ -140,10 +177,16 @@ describe('GpsSensor permission state', () => {
     });
     const sensor = new GpsSensor();
     sensor.start();
-    const promise = sensor.waitForFirstFix(30_000); // long timeout — must not wait for it
+    const promise = sensor.waitForFirstFix(3000);
+
     fireError!({ code: 1, PERMISSION_DENIED: 1 } as GeolocationPositionError);
+    expect(sensor.permissionState).toBe('denied');
+
+    vi.advanceTimersByTime(3000);
     expect(await promise).toBeNull();
     expect(sensor.permissionState).toBe('denied');
+
+    vi.useRealTimers();
   });
 });
 
