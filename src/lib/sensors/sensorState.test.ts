@@ -153,12 +153,12 @@ describe('GpsSensor accuracy', () => {
 
   function makePosition(
     accuracy: number,
-    { lat = 0, lon = 0, altitude = null, timestamp = Date.now() }:
-    { lat?: number; lon?: number; altitude?: number | null; timestamp?: number } = {}
+    { altitude = null, speed = null, timestamp = Date.now() }:
+    { altitude?: number | null; speed?: number | null; timestamp?: number } = {}
   ): GeolocationPosition {
     return {
-      coords: { accuracy, latitude: lat, longitude: lon,
-        altitude, altitudeAccuracy: null, heading: null, speed: null,
+      coords: { accuracy, latitude: 0, longitude: 0,
+        altitude, altitudeAccuracy: null, heading: null, speed,
         toJSON: () => ({}) },
       timestamp,
       toJSON: () => {},
@@ -265,9 +265,7 @@ describe('GpsSensor accuracy', () => {
     const { fireSuccess } = makeGeoMock();
     const sensor = new GpsSensor();
     sensor.start();
-    const t = Date.now();
-    fireSuccess(makePosition(MIN_ACCURACY_M + 1, { lat: 0,     lon: 0,     timestamp: t }));
-    fireSuccess(makePosition(MIN_ACCURACY_M + 1, { lat: 0.001, lon: 0,     timestamp: t + 5000 }));
+    fireSuccess(makePosition(MIN_ACCURACY_M + 1, { speed: 2 }));
     expect(sensor.pace).toBeNull();
   });
 
@@ -275,9 +273,7 @@ describe('GpsSensor accuracy', () => {
     const { fireSuccess } = makeGeoMock();
     const sensor = new GpsSensor();
     sensor.start();
-    const t = Date.now();
-    fireSuccess(makePosition(MIN_ACCURACY_M, { lat: 0,     lon: 0, timestamp: t }));
-    fireSuccess(makePosition(MIN_ACCURACY_M, { lat: 0.001, lon: 0, timestamp: t + 5000 }));
+    fireSuccess(makePosition(MIN_ACCURACY_M, { speed: 2 }));
     expect(sensor.pace).not.toBeNull();
   });
 
@@ -285,13 +281,45 @@ describe('GpsSensor accuracy', () => {
     const { fireSuccess } = makeGeoMock();
     const sensor = new GpsSensor();
     sensor.start();
-    const t = Date.now();
-    fireSuccess(makePosition(MIN_ACCURACY_M, { lat: 0,     lon: 0, timestamp: t }));
-    fireSuccess(makePosition(MIN_ACCURACY_M, { lat: 0.001, lon: 0, timestamp: t + 5000 }));
+    fireSuccess(makePosition(MIN_ACCURACY_M, { speed: 2 }));
     expect(sensor.pace).not.toBeNull(); // established
 
-    fireSuccess(makePosition(MIN_ACCURACY_M + 1, { lat: 0.002, lon: 0, timestamp: t + 10000 }));
+    fireSuccess(makePosition(MIN_ACCURACY_M + 1, { speed: 2 }));
     expect(sensor.pace).toBeNull();
+  });
+
+  // --- pace thresholds ---
+
+  it('pace is null when device reports no speed', () => {
+    const { fireSuccess } = makeGeoMock();
+    const sensor = new GpsSensor();
+    sensor.start();
+    fireSuccess(makePosition(MIN_ACCURACY_M, { speed: null }));
+    expect(sensor.pace).toBeNull();
+  });
+
+  it('pace is null when speed is below minimum (0.5 m/s)', () => {
+    const { fireSuccess } = makeGeoMock();
+    const sensor = new GpsSensor();
+    sensor.start();
+    fireSuccess(makePosition(MIN_ACCURACY_M, { speed: 0.4 }));
+    expect(sensor.pace).toBeNull();
+  });
+
+  it('pace is computed at minimum speed (0.5 m/s)', () => {
+    const { fireSuccess } = makeGeoMock();
+    const sensor = new GpsSensor();
+    sensor.start();
+    fireSuccess(makePosition(MIN_ACCURACY_M, { speed: 0.5 }));
+    expect(sensor.pace).not.toBeNull();
+  });
+
+  it('pace sanity: 2 m/s → 4:10 per 500 m', () => {
+    const { fireSuccess } = makeGeoMock();
+    const sensor = new GpsSensor();
+    sensor.start();
+    fireSuccess(makePosition(MIN_ACCURACY_M, { speed: 2 }));
+    expect(sensor.pace).toBe('4:10');
   });
 
   // --- fix quality permutations for startup degradation logic ---
