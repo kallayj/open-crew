@@ -22,12 +22,10 @@
     await motion.requestPermission();
     gps.start();
 
-    if (gps.permissionState === 'granted') {
-      const accuracy = await gps.waitForFirstFix(3000);
-      if (accuracy !== null) {
-        gpsIpBased = gps.isGpsFix === false;
-        gpsPoorAccuracy = !gpsIpBased && (accuracy <= 0 || accuracy > MIN_ACCURACY_M);
-      }
+    const accuracy = await gps.waitForFirstFix(3000);
+    if (accuracy !== null) {
+      gpsIpBased = gps.isGpsFix === false;
+      gpsPoorAccuracy = !gpsIpBased && (accuracy <= 0 || accuracy > MIN_ACCURACY_M);
     }
 
     const anyDegraded =

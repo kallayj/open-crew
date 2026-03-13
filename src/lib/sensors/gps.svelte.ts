@@ -29,7 +29,7 @@ export class GpsSensor {
 
   private samples: SpeedSample[] = [];
   private watchId: number | null = null;
-  private firstFixResolve: ((accuracy: number) => void) | null = null;
+  private firstFixResolve: ((accuracy: number | null) => void) | null = null;
 
   start(): void {
     if (!navigator.geolocation) {
@@ -39,11 +39,19 @@ export class GpsSensor {
     this.watchId = navigator.geolocation.watchPosition(
       (pos) => this.handlePosition(pos),
       (err) => {
-        if (err.code === err.PERMISSION_DENIED) this.permissionState = 'denied';
+        if (err.code === err.PERMISSION_DENIED) {
+          this.permissionState = 'denied';
+          if (this.firstFixResolve) {
+            this.firstFixResolve(null);
+            this.firstFixResolve = null;
+          }
+        }
       },
       { enableHighAccuracy: true, maximumAge: 0 }
     );
-    this.permissionState = 'granted';
+    // permissionState is set to 'granted' in handlePosition() once we know
+    // the browser actually delivered a position (iOS fires the error callback
+    // with PERMISSION_DENIED if the user denies the system dialog).
   }
 
   /**
@@ -55,7 +63,7 @@ export class GpsSensor {
     if (this.accuracy !== null) return Promise.resolve(this.accuracy);
     return new Promise<number | null>((resolve) => {
       let settled = false;
-      this.firstFixResolve = (accuracy: number) => {
+      this.firstFixResolve = (accuracy: number | null) => {
         if (!settled) { settled = true; resolve(accuracy); }
       };
       setTimeout(() => {
@@ -69,6 +77,7 @@ export class GpsSensor {
   }
 
   private handlePosition(pos: GeolocationPosition): void {
+    this.permissionState = 'granted';
     const acc = pos.coords.accuracy;
     const { latitude: lat, longitude: lon } = pos.coords;
     this.accuracy = acc;
