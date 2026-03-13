@@ -1,21 +1,25 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { formatStopwatch } from '$lib/utils/format';
 
   let { hasMotion }: { hasMotion: boolean } = $props();
 
-  let watchState: 'ready' | 'running' | 'paused' = $state('paused');
+  let watchState = $state<'ready' | 'running' | 'paused'>('paused');
   let elapsed = $state(0);
   let startTime: number | null = null;
   let pausedAt: number | null = null;
   let rafId: number | null = null;
   let holdTimer: ReturnType<typeof setTimeout> | null = null;
   let holding = $state(false);
+  let didReset = false;
   const HOLD_MS = 650;
 
-  // Auto-start when motion detected (only when armed)
+  // Auto-start when motion is newly detected (only when already armed)
   $effect(() => {
-    if (hasMotion && watchState === 'ready') {
-      startWatch();
+    if (hasMotion) {
+      untrack(() => {
+        if (watchState === 'ready') startWatch();
+      });
     }
   });
 
@@ -90,6 +94,7 @@
   }
 
   function toggleRunning(): void {
+    if (didReset) { didReset = false; return; }
     if (watchState === 'running') pauseWatch();
     else if (watchState === 'paused') watchState = 'ready';
     else if (watchState === 'ready') watchState = 'paused';
@@ -100,6 +105,7 @@
     holding = true;
     holdTimer = setTimeout(() => {
       holding = false;
+      didReset = true;
       resetWatch();
     }, HOLD_MS);
   }
