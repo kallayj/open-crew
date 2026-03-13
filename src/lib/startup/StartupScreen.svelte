@@ -250,7 +250,7 @@
 
   .media-session-desc {
     font-size: 0.65rem;
-    color: #444;
+    color: var(--text-muted);
   }
 
   .actions {

@@ -5,13 +5,32 @@
 }
 
 :root {
+  --bg: #f5f5f5;
+  --bg-panel: #fff;
+  --border: #ddd;
+  --text: #111;
+  --text-muted: #999;
+  --accent: #007a5e;
+  --btn-bg: #e8e8e8;
+  --btn-hover-bg: #d5d5d5;
+  --btn-border: #ccc;
+  --error-flash-bg: #fff0f0;
+  --overlay-bg: rgba(240, 240, 240, 0.92);
+  --font-mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace;
+}
+
+[data-theme="dark"] {
   --bg: #0a0a0a;
   --bg-panel: #111;
   --border: #222;
   --text: #fff;
   --text-muted: #555;
   --accent: #00e676;
-  --font-mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace;
+  --btn-bg: #222;
+  --btn-hover-bg: #333;
+  --btn-border: #444;
+  --error-flash-bg: #2a0a0a;
+  --overlay-bg: rgba(0, 0, 0, 0.85);
 }
 
 html, body {

@@ -85,7 +85,7 @@
 
 <svelte:head>
   <title>open-crew</title>
-  <meta name="theme-color" content="#0a0a0a" />
+  <meta name="theme-color" content="#f5f5f5" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -169,8 +169,8 @@
     bottom: 0;
     left: 0;
     right: 0;
-    background: rgba(0, 0, 0, 0.85);
-    border-top: 1px solid #333;
+    background: var(--overlay-bg);
+    border-top: 1px solid var(--border);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -178,7 +178,7 @@
     gap: 1rem;
     z-index: 100;
     font-size: 0.8rem;
-    color: #aaa;
+    color: var(--text-muted);
   }
 
   .fs-banner-text {
@@ -194,7 +194,7 @@
   .fs-dismiss {
     background: none;
     border: none;
-    color: #666;
+    color: var(--text-muted);
     cursor: pointer;
     font-size: 1rem;
     line-height: 1;
@@ -210,14 +210,14 @@
     bottom: 4px;
     right: 6px;
     font-size: 0.6rem;
-    color: #333;
+    color: var(--border);
     pointer-events: none;
     z-index: 10;
     letter-spacing: 0.03em;
   }
 
   .build-badge.dev {
-    color: #555;
+    color: var(--text-muted);
     font-weight: bold;
   }
 </style>
