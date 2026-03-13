@@ -91,6 +91,7 @@
 
   function toggleRunning(): void {
     if (watchState === 'running') pauseWatch();
+    else if (watchState === 'paused' && elapsed > 0) startWatch();
     else if (watchState === 'paused') watchState = 'ready';
     else if (watchState === 'ready') watchState = 'paused';
   }
