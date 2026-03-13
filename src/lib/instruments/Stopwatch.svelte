@@ -189,7 +189,7 @@
 
   @keyframes hold-fill {
     from { background: transparent; }
-    to   { background: #2a0a0a; color: #ff5252; }
+    to   { background: var(--error-flash-bg); color: #ff5252; }
   }
 
   .controls {
@@ -201,9 +201,9 @@
   }
 
   .btn {
-    background: #222;
+    background: var(--btn-bg);
     color: var(--text);
-    border: 1px solid #444;
+    border: 1px solid var(--btn-border);
     border-radius: 0.4rem;
     padding: 0.4rem 1.2rem;
     font-family: var(--font-mono);
@@ -213,7 +213,7 @@
   }
 
   .btn:active {
-    background: #333;
+    background: var(--btn-hover-bg);
   }
 
   .btn.primary {
