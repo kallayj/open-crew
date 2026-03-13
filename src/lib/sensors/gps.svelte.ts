@@ -29,7 +29,7 @@ export class GpsSensor {
 
   private samples: SpeedSample[] = [];
   private watchId: number | null = null;
-  private firstFixResolve: ((accuracy: number | null) => void) | null = null;
+  private firstFixResolve: ((accuracy: number) => void) | null = null;
 
   start(): void {
     if (!navigator.geolocation) {
@@ -39,19 +39,18 @@ export class GpsSensor {
     this.watchId = navigator.geolocation.watchPosition(
       (pos) => this.handlePosition(pos),
       (err) => {
-        if (err.code === err.PERMISSION_DENIED) {
-          this.permissionState = 'denied';
-          if (this.firstFixResolve) {
-            this.firstFixResolve(null);
-            this.firstFixResolve = null;
-          }
-        }
+        if (err.code === err.PERMISSION_DENIED) this.permissionState = 'denied';
+        // Do NOT resolve firstFixResolve here. On iOS, watchPosition can fire a
+        // pre-check PERMISSION_DENIED while the system dialog is still showing;
+        // positions flow in on the same watch once the user taps Allow.
+        // handlePosition() sets permissionState = 'granted' and resolves the
+        // promise when the first fix arrives. The 3-second timeout handles the
+        // case where the user truly denies (no positions ever arrive).
       },
       { enableHighAccuracy: true, maximumAge: 0 }
     );
-    // permissionState is set to 'granted' in handlePosition() once we know
-    // the browser actually delivered a position (iOS fires the error callback
-    // with PERMISSION_DENIED if the user denies the system dialog).
+    // permissionState is set to 'granted' in handlePosition(), not here, because
+    // iOS may fire a spurious PERMISSION_DENIED before delivering positions.
   }
 
   /**
@@ -63,7 +62,7 @@ export class GpsSensor {
     if (this.accuracy !== null) return Promise.resolve(this.accuracy);
     return new Promise<number | null>((resolve) => {
       let settled = false;
-      this.firstFixResolve = (accuracy: number | null) => {
+      this.firstFixResolve = (accuracy: number) => {
         if (!settled) { settled = true; resolve(accuracy); }
       };
       setTimeout(() => {
