@@ -5,11 +5,17 @@
     spm: number | null;
     permissionState: 'pending' | 'granted' | 'denied';
   } = $props();
+
+  let formatted = $derived(formatSpm(spm));
+  let isHalf = $derived(formatted.endsWith(' 1/2'));
+  let whole = $derived(isHalf ? formatted.slice(0, -4) : formatted);
 </script>
 
 <div class="instrument">
   <div class="label">STROKE RATE</div>
-  <div class="value" class:active={spm !== null}>{formatSpm(spm)}</div>
+  <div class="value" class:active={spm !== null}>
+    {whole}{#if isHalf}<span class="half"> ½</span>{/if}
+  </div>
   <div class="unit">spm</div>
   {#if permissionState === 'denied'}
     <div class="status error">Motion denied</div>
@@ -45,6 +51,11 @@
 
   .value.active {
     color: var(--accent);
+  }
+
+  .half {
+    font-size: 0.5em;
+    vertical-align: middle;
   }
 
   .unit {

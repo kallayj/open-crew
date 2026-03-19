@@ -1,6 +1,8 @@
 export function formatSpm(spm: number | null): string {
   if (spm === null) return '--';
-  return Math.round(spm).toString();
+  const rounded = Math.round(spm * 2) / 2;
+  const whole = Math.floor(rounded);
+  return rounded % 1 === 0 ? whole.toString() : `${whole} 1/2`;
 }
 
 export function formatPace(avgSpeedMs: number | null): string {
