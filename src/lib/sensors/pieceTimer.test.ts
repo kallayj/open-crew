@@ -139,11 +139,14 @@ describe('PieceTimer.onStrokeConfirmed', () => {
     expect(t.elapsed).toBe(200);
   });
 
-  it('does nothing when not pending', () => {
+  it('starts from now when ready but no pending window (motion was already active)', () => {
+    vi.spyOn(performance, 'now').mockReturnValue(5000);
     const t = new PieceTimer();
-    t.toggleRunning();
+    t.toggleRunning(); // → ready (hasMotion was already true, so no pendingStartTime)
     t.onStrokeConfirmed();
-    expect(t.watchState).toBe('ready');
+    expect(t.watchState).toBe('running');
+    expect(t.elapsed).toBe(0); // started from now
+    expect(t.pendingStartTime).toBeNull();
   });
 
   it('does nothing when not armed', () => {

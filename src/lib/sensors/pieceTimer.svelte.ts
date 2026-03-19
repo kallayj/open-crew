@@ -64,10 +64,16 @@ export class PieceTimer {
 
   /** Call from a reactive effect when lastStrokeTime becomes non-null. */
   onStrokeConfirmed(): void {
-    if (this.watchState === 'ready' && this.pendingStartTime !== null) {
+    if (this.watchState !== 'ready') return;
+    if (this.pendingStartTime !== null) {
       const t = this.pendingStartTime;
       this._clearPending();
       this._startFrom(t);
+    } else {
+      // hasMotion was already true when ready was entered, so onMotionDetected
+      // never fired and pendingStartTime was never set. A confirmed stroke is
+      // sufficient evidence of rowing — start from now.
+      this._startFrom(performance.now());
     }
   }
 
