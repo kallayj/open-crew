@@ -124,28 +124,31 @@ export function processMotionSample(sample: MotionSample, state: AlgorithmState)
     state.hasMotion = false;
   }
 
-  // Wait for gravity filter to stabilise
-  if (now - state.settleStartTime! < SETTLE_TIME_MS) return state;
-
-  // Project out vertical component → horizontal (surge) vector
+  // Project out vertical component → horizontal (surge) vector.
+  // Runs even during settle so axis tracking is warm when detection starts.
   const grav = state.gravity;
   const gravMag = Math.sqrt(grav.x * grav.x + grav.y * grav.y + grav.z * grav.z);
+  let horizX = 0, horizY = 0, horizZ = 0, horizMag = 0;
+  if (gravMag >= 1) {
+    const gx = grav.x / gravMag;
+    const gy = grav.y / gravMag;
+    const gz = grav.z / gravMag;
+    const vertComp = linX * gx + linY * gy + linZ * gz;
+    horizX = linX - vertComp * gx;
+    horizY = linY - vertComp * gy;
+    horizZ = linZ - vertComp * gz;
+    horizMag = Math.sqrt(horizX * horizX + horizY * horizY + horizZ * horizZ);
+
+    // Track dominant horizontal axis via slow EMA of absolute component values
+    const axisAlpha = 1 - Math.exp(-dt / AXIS_TAU_S);
+    state.axisAbsEma.x = axisAlpha * Math.abs(horizX) + (1 - axisAlpha) * state.axisAbsEma.x;
+    state.axisAbsEma.y = axisAlpha * Math.abs(horizY) + (1 - axisAlpha) * state.axisAbsEma.y;
+    state.axisAbsEma.z = axisAlpha * Math.abs(horizZ) + (1 - axisAlpha) * state.axisAbsEma.z;
+  }
+
+  // Wait for gravity filter to stabilise before stroke detection
+  if (now - state.settleStartTime! < SETTLE_TIME_MS) return state;
   if (gravMag < 1) return state;
-
-  const gx = grav.x / gravMag;
-  const gy = grav.y / gravMag;
-  const gz = grav.z / gravMag;
-  const vertComp = linX * gx + linY * gy + linZ * gz;
-  const horizX = linX - vertComp * gx;
-  const horizY = linY - vertComp * gy;
-  const horizZ = linZ - vertComp * gz;
-  const horizMag = Math.sqrt(horizX * horizX + horizY * horizY + horizZ * horizZ);
-
-  // Track dominant horizontal axis via slow EMA of absolute component values
-  const axisAlpha = 1 - Math.exp(-dt / AXIS_TAU_S);
-  state.axisAbsEma.x = axisAlpha * Math.abs(horizX) + (1 - axisAlpha) * state.axisAbsEma.x;
-  state.axisAbsEma.y = axisAlpha * Math.abs(horizY) + (1 - axisAlpha) * state.axisAbsEma.y;
-  state.axisAbsEma.z = axisAlpha * Math.abs(horizZ) + (1 - axisAlpha) * state.axisAbsEma.z;
 
   // Sign the magnitude by the current value of the dominant axis.
   // SPM is a period measurement — the sign determines which of catch or drive
