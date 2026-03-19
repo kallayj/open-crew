@@ -30,9 +30,11 @@ describe('formatSpm', () => {
     expect(formatSpm(null)).toBe('--');
   });
 
-  it('rounds to integer string', () => {
-    expect(formatSpm(22.4)).toBe('22');
-    expect(formatSpm(22.5)).toBe('23');
+  it('rounds to nearest 0.5 spm', () => {
+    expect(formatSpm(22.2)).toBe('22');
+    expect(formatSpm(22.3)).toBe('22 1/2');
+    expect(formatSpm(22.5)).toBe('22 1/2');
+    expect(formatSpm(22.8)).toBe('23');
     expect(formatSpm(20)).toBe('20');
   });
 });
