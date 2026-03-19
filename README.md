@@ -39,7 +39,7 @@ All time-sensitive parameters use time constants, so behaviour is consistent reg
 | `REST_TIMEOUT_MS` | 6000 ms | SPM cleared after this long with no detected stroke. |
 | `BUFFER_SIZE` | 4 | Intervals averaged for SPM output. |
 
-**`hasMotion` flag:** set true immediately when linear acceleration magnitude exceeds `NOISE_THRESHOLD`, cleared after `MOTION_TIMEOUT_MS` of sustained stillness. Arms the stopwatch auto-start.
+**`hasMotion` flag:** set true immediately when linear acceleration magnitude exceeds `NOISE_THRESHOLD`, cleared after `MOTION_TIMEOUT_MS` of sustained stillness. Used by the stopwatch to record a candidate start time when motion is first detected.
 
 ### Boat Speed / Pace
 Uses the `Geolocation` API (`watchPosition` with high accuracy) and displays speed as a split time in min:sec per 500 m — the standard rowing pace unit.
@@ -47,7 +47,20 @@ Uses the `Geolocation` API (`watchPosition` with high accuracy) and displays spe
 **Algorithm:** rolling average of speed samples over a `BUFFER_TIME_MS` (10 s) window. Each GPS fix reports speed directly via `GeolocationCoordinates.speed` (m/s). Samples are buffered and averaged; the result is converted to min:sec per 500 m for display. Fixes with accuracy worse than `MIN_ACCURACY_M` (20 m) or null speed are ignored.
 
 ### Stopwatch
-Tap **Start** to arm the stopwatch. It starts automatically when `hasMotion` is true (i.e. the first rowing stroke after arming). Tap **Pause** to pause; tap **Resume** to re-arm and wait for motion again. Long-press the time display (≥ 650 ms) to reset.
+Tap **Start** to arm the stopwatch. Auto-start uses a two-stage detection:
+
+1. **Candidate start** — when `hasMotion` first goes true while armed, the current time is recorded as the candidate start time. This corresponds to the beginning of the first drive off the catch.
+2. **Confirmation** — when the stroke detection algorithm completes its first threshold trough (up-crossing of the smoothed surge signal), rowing is confirmed and the stopwatch starts, backdated to the candidate start time. This separates stroke *confirmation* from SPM *measurement*: SPM requires two troughs for an interval; confirmation requires only one.
+
+If no stroke trough is detected within one maximum stroke period (`STROKE_CONFIRM_TIMEOUT_MS = 60000 / MIN_ROWING_SPM`), the candidate start is discarded as a false positive. Low acceleration between strokes (e.g. the boat coasting after the release) does not trigger a false positive — only the absence of a confirmed stroke within the timeout does.
+
+Tap **Pause** to pause; tap **Resume** to re-arm and wait for motion again. Tap **Reset** to return to the initial state.
+
+**Stopwatch tunable constants** (`src/lib/instruments/Stopwatch.svelte`):
+
+| Constant | Default | Effect |
+|---|---|---|
+| `MIN_ROWING_SPM` | 15 SPM | Slowest expected stroke rate. Sets the false-positive timeout to one full stroke period at this rate. |
 
 ## Deployment
 The app is a fully static SvelteKit build. A GitHub Actions workflow (`.github/workflows/deploy.yml`) builds and deploys to GitHub Pages on manual trigger. The base path (`/repo-name`) is injected automatically from the repository name.

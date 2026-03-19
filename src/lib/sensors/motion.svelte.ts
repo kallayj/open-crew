@@ -10,6 +10,7 @@ export class MotionSensor {
   spm = $state<number | null>(null);
   strokePeriodMs = $state<number | null>(null);
   hasMotion = $state(false);
+  lastStrokeTime = $state<number | null>(null);
   permissionState = $state<PermissionState>('pending');
 
   private algoState: AlgorithmState = createInitialState();
@@ -52,6 +53,7 @@ export class MotionSensor {
     this.spm = this.algoState.spm;
     this.strokePeriodMs = this.algoState.strokePeriodMs;
     this.hasMotion = this.algoState.hasMotion;
+    this.lastStrokeTime = this.algoState.lastPeakTime;
   }
 
   destroy(): void {

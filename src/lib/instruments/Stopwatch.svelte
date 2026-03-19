@@ -2,19 +2,53 @@
   import { untrack } from 'svelte';
   import { formatStopwatch } from '$lib/utils/format';
 
-  let { hasMotion }: { hasMotion: boolean } = $props();
+  let { hasMotion, lastStrokeTime }: { hasMotion: boolean; lastStrokeTime: number | null } = $props();
+
+  // Slowest stroke rate we expect to see at the start of a piece.
+  // Determines how long to wait for stroke confirmation before treating
+  // initial motion as a false positive (one full stroke period).
+  const MIN_ROWING_SPM = 15;
+  const STROKE_CONFIRM_TIMEOUT_MS = 60000 / MIN_ROWING_SPM;
 
   let watchState = $state<'ready' | 'running' | 'paused'>('paused');
   let elapsed = $state(0);
   let startTime: number | null = null;
   let pausedAt: number | null = null;
   let rafId: number | null = null;
+  let pendingStartTime: number | null = null;
+  let confirmTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
-  // Auto-start when motion is newly detected (only when already armed)
+  function clearPending(): void {
+    pendingStartTime = null;
+    if (confirmTimeoutId !== null) {
+      clearTimeout(confirmTimeoutId);
+      confirmTimeoutId = null;
+    }
+  }
+
+  // Record candidate start time when motion is first detected while armed.
+  // A timeout discards it as a false positive if no stroke trough is confirmed
+  // within one maximum stroke period.
   $effect(() => {
     if (hasMotion) {
       untrack(() => {
-        if (watchState === 'ready') startWatch();
+        if (watchState === 'ready' && pendingStartTime === null) {
+          pendingStartTime = performance.now();
+          confirmTimeoutId = setTimeout(clearPending, STROKE_CONFIRM_TIMEOUT_MS);
+        }
+      });
+    }
+  });
+
+  // First stroke trough confirmed — start backdated to when motion began
+  $effect(() => {
+    if (lastStrokeTime !== null) {
+      untrack(() => {
+        if (watchState === 'ready' && pendingStartTime !== null) {
+          const t = pendingStartTime;
+          clearPending();
+          startWatchFrom(t);
+        }
       });
     }
   });
@@ -69,6 +103,14 @@
     rafId = requestAnimationFrame(tick);
   }
 
+  function startWatchFrom(fromTime: number): void {
+    startTime = fromTime;
+    elapsed = performance.now() - fromTime;
+    pausedAt = null;
+    watchState = 'running';
+    rafId = requestAnimationFrame(tick);
+  }
+
   function pauseWatch(): void {
     if (rafId !== null) {
       cancelAnimationFrame(rafId);
@@ -83,6 +125,7 @@
       cancelAnimationFrame(rafId);
       rafId = null;
     }
+    clearPending();
     elapsed = 0;
     startTime = null;
     pausedAt = null;
@@ -93,7 +136,7 @@
     if (watchState === 'running') pauseWatch();
     else if (watchState === 'paused' && elapsed > 0) startWatch();
     else if (watchState === 'paused') watchState = 'ready';
-    else if (watchState === 'ready') watchState = 'paused';
+    else if (watchState === 'ready') { clearPending(); watchState = 'paused'; }
   }
 
   const displayTime = $derived(watchState === 'ready' ? 'READY' : elapsed === 0 ? '--:--.--' : formatStopwatch(elapsed));

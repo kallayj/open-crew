@@ -99,7 +99,7 @@
     <BoatSpeed pace={gps.pace} permissionState={gps.permissionState} accuracy={gps.accuracy} isGpsFix={gps.isGpsFix} />
   </div>
   <div class="panel">
-    <Stopwatch hasMotion={motion.hasMotion} />
+    <Stopwatch hasMotion={motion.hasMotion} lastStrokeTime={motion.lastStrokeTime} />
   </div>
 </div>
 

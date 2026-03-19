@@ -19,6 +19,10 @@ describe('MotionSensor permission state', () => {
     expect(new MotionSensor().permissionState).toBe('pending');
   });
 
+  it('lastStrokeTime starts as null', () => {
+    expect(new MotionSensor().lastStrokeTime).toBeNull();
+  });
+
   it('grants on non-iOS devices (no requestPermission API)', async () => {
     const sensor = new MotionSensor();
     await sensor.requestPermission();

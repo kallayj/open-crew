@@ -190,6 +190,28 @@ describe('stroke debounce', () => {
 });
 
 // ---------------------------------------------------------------------------
+// First-stroke detection: lastPeakTime available before spm
+//
+// The Stopwatch uses lastPeakTime (exposed as lastStrokeTime) to confirm
+// rowing has begun after a single trough — one stroke earlier than spm,
+// which requires two troughs for an interval.
+// ---------------------------------------------------------------------------
+
+describe('first-stroke detection', () => {
+  it('sets lastPeakTime after the first trough without setting spm', () => {
+    // At 30 SPM, settle ends at t=1500 ms. The signal is at its negative peak
+    // at that moment, so the first down-crossing is registered immediately.
+    // The first up-crossing (and lastPeakTime) arrives ~t=2000 ms;
+    // the second up-crossing (and spm) not until ~t=4000 ms.
+    // 3 s of data sits cleanly between the two.
+    const samples = sineSamples(0, 3000, 50, 30);
+    const state = replaySamples(samples);
+    expect(state.lastPeakTime).not.toBeNull();
+    expect(state.spm).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Phase 5 placeholder: derived tests from real recording
 // ---------------------------------------------------------------------------
 // After visual inspection of replay-output.csv, add assertions here, e.g.:
