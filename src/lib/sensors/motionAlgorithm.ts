@@ -215,9 +215,11 @@ export function processMotionSample(sample: MotionSample, state: AlgorithmState)
   }
 
   // Clear stale SPM if no stroke detected for REST_TIMEOUT_MS (Hermsen 4.5)
-  if (state.spm !== null && state.lastPeakTime !== null && now - state.lastPeakTime > REST_TIMEOUT_MS) {
+  if (state.lastPeakTime !== null && now - state.lastPeakTime > REST_TIMEOUT_MS) {
     state.spm = null;
     state.strokePeriodMs = null;
+    state.lastPeakTime = null;
+    state.intervalBuffer = [];
   }
 
   return state;

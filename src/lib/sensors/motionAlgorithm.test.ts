@@ -164,6 +164,39 @@ describe('rest timeout', () => {
     expect(state.spm).toBeNull();
     expect(state.strokePeriodMs).toBeNull();
   });
+
+  it('first spm reading after a rest is correct, not a stale low value', () => {
+    // Row steadily to establish spm and lastPeakTime.
+    const activeSamples = sineSamples(0, 20_000, 50, 30, 2.5);
+    let state = createInitialState();
+    for (const s of activeSamples) state = processMotionSample(s, state);
+    expect(state.spm).not.toBeNull();
+
+    // Sit still past REST_TIMEOUT_MS.
+    const restTimestamp = state.lastPeakTime! + REST_TIMEOUT_MS + 1;
+    state = processMotionSample({ x: 0, y: 0, z: 9.8, timestamp: restTimestamp }, state);
+    expect(state.spm).toBeNull();
+
+    // Resume rowing. Process sample-by-sample so we can capture the exact
+    // moment spm first becomes non-null after the rest.
+    const resumeAt = restTimestamp + 1_000;
+    const resumeSamples = sineSamples(resumeAt, 5_000, 50, 30, 2.5);
+    let firstSpmAfterRest: number | null = null;
+    for (const s of resumeSamples) {
+      const prevSpm = state.spm;
+      state = processMotionSample(s, state);
+      if (firstSpmAfterRest === null && prevSpm === null && state.spm !== null) {
+        firstSpmAfterRest = state.spm;
+      }
+    }
+
+    // The first spm reading after a rest should be correct (~30).
+    // Before the fix, it would be tiny (e.g. ~6) because the interval was
+    // computed against a lastPeakTime left over from before the rest.
+    expect(firstSpmAfterRest).not.toBeNull();
+    expect(firstSpmAfterRest!).toBeGreaterThan(20);
+    expect(firstSpmAfterRest!).toBeLessThan(40);
+  });
 });
 
 // ---------------------------------------------------------------------------
