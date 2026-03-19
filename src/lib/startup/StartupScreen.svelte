@@ -7,7 +7,7 @@
   let { motion, gps, oncontinue }: {
     motion: MotionSensor;
     gps: GpsSensor;
-    oncontinue: () => void;
+    oncontinue: (mediaSession: boolean) => void;
   } = $props();
 
   type Phase = 'idle' | 'requesting' | 'degraded';
@@ -36,7 +36,7 @@
     if (anyDegraded) {
       phase = 'degraded';
     } else {
-      oncontinue();
+      oncontinue(mediaSession);
     }
   }
 
@@ -138,7 +138,7 @@
       </label>
 
       <div class="actions">
-        <button class="btn-primary" onclick={oncontinue}>Continue</button>
+        <button class="btn-primary" onclick={() => oncontinue(mediaSession)}>Continue</button>
       </div>
     {/if}
   </div>

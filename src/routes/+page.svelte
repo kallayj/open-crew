@@ -28,8 +28,19 @@
 
   let showStartup = $state(true);
 
-  function onStartupContinue() {
+  function startSilentAudio() {
+    const ctx = new AudioContext();
+    const buf = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    src.connect(ctx.destination);
+    src.start();
+  }
+
+  function onStartupContinue(mediaSession: boolean) {
     showStartup = false;
+    if (mediaSession) startSilentAudio();
     checkBanner();
   }
 
