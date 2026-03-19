@@ -1,5 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { formatPace, formatSpm, formatStopwatch } from './format';
+import { formatDistance, formatPace, formatSpm, formatStopwatch } from './format';
+
+describe('formatDistance', () => {
+  it('formats 0 m as 0m', () => {
+    expect(formatDistance(0)).toBe('0m');
+  });
+
+  it('rounds to integer metres below 10 000', () => {
+    expect(formatDistance(499.6)).toBe('500m');
+    expect(formatDistance(1999.4)).toBe('1999m');
+  });
+
+  it('formats exactly 9999 m as 9999m', () => {
+    expect(formatDistance(9999)).toBe('9999m');
+  });
+
+  it('formats 10 000 m as 10.0km', () => {
+    expect(formatDistance(10000)).toBe('10.0km');
+  });
+
+  it('formats above 10 000 m with one decimal kilometre', () => {
+    expect(formatDistance(12345)).toBe('12.3km');
+    expect(formatDistance(42195)).toBe('42.2km');
+  });
+});
 
 describe('formatSpm', () => {
   it('returns -- for null', () => {

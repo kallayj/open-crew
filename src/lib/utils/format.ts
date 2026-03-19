@@ -11,6 +11,11 @@ export function formatPace(avgSpeedMs: number | null): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
+export function formatDistance(m: number): string {
+  if (m < 10000) return `${Math.round(m)}m`;
+  return `${(m / 1000).toFixed(1)}km`;
+}
+
 export function formatStopwatch(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
   const hours = Math.floor(totalSeconds / 3600);

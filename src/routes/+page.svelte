@@ -1,17 +1,30 @@
 <script lang="ts">
-  declare const __BUILD_TIME__: string;
-  import { onMount } from 'svelte';
+  import { untrack, onMount } from 'svelte';
+  import { browser } from '$app/environment';
   import { MotionSensor } from '$lib/sensors/motion.svelte';
   import { GpsSensor } from '$lib/sensors/gps.svelte';
+  import { PieceTimer } from '$lib/sensors/pieceTimer.svelte';
   import StrokeRate from '$lib/instruments/StrokeRate.svelte';
   import BoatSpeed from '$lib/instruments/BoatSpeed.svelte';
   import Stopwatch from '$lib/instruments/Stopwatch.svelte';
+  import Distance from '$lib/instruments/Distance.svelte';
   import StartupScreen from '$lib/startup/StartupScreen.svelte';
 
   const motion = new MotionSensor();
   const gps = new GpsSensor();
+  const pieceTimer = new PieceTimer();
 
-  import { browser } from '$app/environment';
+  // Feed motion sensor events into the shared piece timer lifecycle.
+  $effect(() => {
+    if (motion.hasMotion) {
+      untrack(() => pieceTimer.onMotionDetected(gps.speedMs));
+    }
+  });
+  $effect(() => {
+    if (motion.lastStrokeTime !== null) {
+      untrack(() => pieceTimer.onStrokeConfirmed());
+    }
+  });
 
   let showStartup = $state(true);
 
@@ -99,7 +112,10 @@
     <BoatSpeed pace={gps.pace} permissionState={gps.permissionState} accuracy={gps.accuracy} isGpsFix={gps.isGpsFix} />
   </div>
   <div class="panel">
-    <Stopwatch hasMotion={motion.hasMotion} lastStrokeTime={motion.lastStrokeTime} />
+    <Stopwatch {pieceTimer} />
+  </div>
+  <div class="panel">
+    <Distance {pieceTimer} {gps} />
   </div>
 </div>
 
@@ -130,19 +146,19 @@
     background: var(--bg);
   }
 
-  /* Landscape: three columns */
+  /* Landscape: four columns */
   @media (orientation: landscape) {
     .panel-grid {
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
       grid-template-rows: 1fr;
     }
   }
 
-  /* Portrait: three rows */
+  /* Portrait: four rows */
   @media (orientation: portrait) {
     .panel-grid {
       grid-template-columns: 1fr;
-      grid-template-rows: 1fr 1fr 1fr;
+      grid-template-rows: 1fr 1fr 1fr 1fr;
     }
   }
 

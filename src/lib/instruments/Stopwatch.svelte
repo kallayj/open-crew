@@ -1,70 +1,21 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
   import { formatStopwatch } from '$lib/utils/format';
+  import type { PieceTimer } from '$lib/sensors/pieceTimer.svelte';
 
-  let { hasMotion, lastStrokeTime }: { hasMotion: boolean; lastStrokeTime: number | null } = $props();
-
-  // Slowest stroke rate we expect to see at the start of a piece.
-  // Determines how long to wait for stroke confirmation before treating
-  // initial motion as a false positive (one full stroke period).
-  const MIN_ROWING_SPM = 15;
-  const STROKE_CONFIRM_TIMEOUT_MS = 60000 / MIN_ROWING_SPM;
-
-  let watchState = $state<'ready' | 'running' | 'paused'>('paused');
-  let elapsed = $state(0);
-  let startTime: number | null = null;
-  let pausedAt: number | null = null;
-  let rafId: number | null = null;
-  let pendingStartTime: number | null = null;
-  let confirmTimeoutId: ReturnType<typeof setTimeout> | null = null;
-
-  function clearPending(): void {
-    pendingStartTime = null;
-    if (confirmTimeoutId !== null) {
-      clearTimeout(confirmTimeoutId);
-      confirmTimeoutId = null;
-    }
-  }
-
-  // Record candidate start time when motion is first detected while armed.
-  // A timeout discards it as a false positive if no stroke trough is confirmed
-  // within one maximum stroke period.
-  $effect(() => {
-    if (hasMotion) {
-      untrack(() => {
-        if (watchState === 'ready' && pendingStartTime === null) {
-          pendingStartTime = performance.now();
-          confirmTimeoutId = setTimeout(clearPending, STROKE_CONFIRM_TIMEOUT_MS);
-        }
-      });
-    }
-  });
-
-  // First stroke trough confirmed — start backdated to when motion began
-  $effect(() => {
-    if (lastStrokeTime !== null) {
-      untrack(() => {
-        if (watchState === 'ready' && pendingStartTime !== null) {
-          const t = pendingStartTime;
-          clearPending();
-          startWatchFrom(t);
-        }
-      });
-    }
-  });
+  let { pieceTimer }: { pieceTimer: PieceTimer } = $props();
 
   // Media Session integration
   $effect(() => {
     if (!('mediaSession' in navigator)) return;
 
     navigator.mediaSession.setActionHandler('play', () => {
-      if (watchState === 'paused') watchState = 'ready';
+      if (pieceTimer.watchState === 'paused') pieceTimer.watchState = 'ready';
     });
     navigator.mediaSession.setActionHandler('pause', () => {
-      if (watchState === 'running') pauseWatch();
+      if (pieceTimer.watchState === 'running') pieceTimer.pause();
     });
-    navigator.mediaSession.setActionHandler('stop', () => resetWatch());
-    navigator.mediaSession.setActionHandler('previoustrack', () => resetWatch());
+    navigator.mediaSession.setActionHandler('stop', () => pieceTimer.reset());
+    navigator.mediaSession.setActionHandler('previoustrack', () => pieceTimer.reset());
 
     return () => {
       navigator.mediaSession.setActionHandler('play', null);
@@ -76,72 +27,34 @@
 
   $effect(() => {
     if (!('mediaSession' in navigator)) return;
-    navigator.mediaSession.playbackState = watchState === 'running' ? 'playing' : 'paused';
+    navigator.mediaSession.playbackState =
+      pieceTimer.watchState === 'running' ? 'playing' : 'paused';
     navigator.mediaSession.setPositionState({
       duration: Infinity,
       playbackRate: 1,
-      position: elapsed / 1000,
+      position: pieceTimer.elapsed / 1000,
     });
   });
 
-  function tick(): void {
-    if (startTime !== null) {
-      elapsed = performance.now() - startTime;
-    }
-    rafId = requestAnimationFrame(tick);
-  }
-
-  function startWatch(): void {
-    if (pausedAt !== null) {
-      startTime = performance.now() - pausedAt;
-    } else {
-      startTime = performance.now();
-      elapsed = 0;
-    }
-    pausedAt = null;
-    watchState = 'running';
-    rafId = requestAnimationFrame(tick);
-  }
-
-  function startWatchFrom(fromTime: number): void {
-    startTime = fromTime;
-    elapsed = performance.now() - fromTime;
-    pausedAt = null;
-    watchState = 'running';
-    rafId = requestAnimationFrame(tick);
-  }
-
-  function pauseWatch(): void {
-    if (rafId !== null) {
-      cancelAnimationFrame(rafId);
-      rafId = null;
-    }
-    pausedAt = elapsed;
-    watchState = 'paused';
-  }
-
-  function resetWatch(): void {
-    if (rafId !== null) {
-      cancelAnimationFrame(rafId);
-      rafId = null;
-    }
-    clearPending();
-    elapsed = 0;
-    startTime = null;
-    pausedAt = null;
-    watchState = 'paused';
-  }
-
-  function toggleRunning(): void {
-    if (watchState === 'running') pauseWatch();
-    else if (watchState === 'paused' && elapsed > 0) startWatch();
-    else if (watchState === 'paused') watchState = 'ready';
-    else if (watchState === 'ready') { clearPending(); watchState = 'paused'; }
-  }
-
-  const displayTime = $derived(watchState === 'ready' ? 'READY' : elapsed === 0 ? '--:--.--' : formatStopwatch(elapsed));
-  const btnLabel = $derived(watchState === 'running' ? 'Pause' : watchState === 'ready' ? 'Cancel' : elapsed === 0 ? 'Start' : 'Resume');
-  const showReset = $derived(watchState === 'paused' && elapsed > 0);
+  const displayTime = $derived(
+    pieceTimer.watchState === 'ready'
+      ? 'READY'
+      : pieceTimer.elapsed === 0
+        ? '--:--.--'
+        : formatStopwatch(pieceTimer.elapsed),
+  );
+  const btnLabel = $derived(
+    pieceTimer.watchState === 'running'
+      ? 'Pause'
+      : pieceTimer.watchState === 'ready'
+        ? 'Cancel'
+        : pieceTimer.elapsed === 0
+          ? 'Start'
+          : 'Resume',
+  );
+  const showReset = $derived(
+    pieceTimer.watchState === 'paused' && pieceTimer.elapsed > 0,
+  );
 </script>
 
 <div class="instrument">
@@ -149,8 +62,8 @@
 
   <div
     class="value"
-    class:active={watchState === 'running'}
-    class:ready={watchState === 'ready' || elapsed === 0}
+    class:active={pieceTimer.watchState === 'running'}
+    class:ready={pieceTimer.watchState === 'ready' || pieceTimer.elapsed === 0}
   >
     {displayTime}
   </div>
@@ -158,11 +71,11 @@
   <div class="controls">
     <button
       class="btn"
-      class:primary={watchState !== 'running'}
-      onclick={toggleRunning}
+      class:primary={pieceTimer.watchState !== 'running'}
+      onclick={() => pieceTimer.toggleRunning()}
     >{btnLabel}</button>
     {#if showReset}
-      <button class="btn danger" onclick={resetWatch}>Reset</button>
+      <button class="btn danger" onclick={() => pieceTimer.reset()}>Reset</button>
     {/if}
   </div>
 </div>

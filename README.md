@@ -46,21 +46,35 @@ Uses the `Geolocation` API (`watchPosition` with high accuracy) and displays spe
 
 **Algorithm:** rolling average of speed samples over a `BUFFER_TIME_MS` (10 s) window. Each GPS fix reports speed directly via `GeolocationCoordinates.speed` (m/s). Samples are buffered and averaged; the result is converted to min:sec per 500 m for display. Fixes with accuracy worse than `MIN_ACCURACY_M` (20 m) or null speed are ignored.
 
-### Stopwatch
-Tap **Start** to arm the stopwatch. Auto-start uses a two-stage detection:
+### Stopwatch and Distance
+The stopwatch and distance counter share a single lifecycle managed by `PieceTimer` (`src/lib/sensors/pieceTimer.svelte.ts`). Both instruments start and reset together.
 
-1. **Candidate start** — when `hasMotion` first goes true while armed, the current time is recorded as the candidate start time. This corresponds to the beginning of the first drive off the catch.
-2. **Confirmation** — when the stroke detection algorithm completes its first threshold trough (up-crossing of the smoothed surge signal), rowing is confirmed and the stopwatch starts, backdated to the candidate start time. This separates stroke *confirmation* from SPM *measurement*: SPM requires two troughs for an interval; confirmation requires only one.
+Tap **Start** to arm. Three auto-start paths:
+
+**1. Boat already under way (GPS speed ≥ 0.5 m/s)**
+Rowing is certain — starts immediately with no confirmation wait. Used for the initial start when the boat is already moving, and equivalently for re-arming after a pause (resume). The distance counter seeds its integration from the current GPS speed at the moment of resume, so no distance is lost to the sub-second gap before the next GPS fix.
+
+**2. Boat at rest — two-stage detection**
+- **Candidate start** — when `hasMotion` first goes true while armed, the current time is recorded as the candidate start time. This corresponds to the beginning of the first drive off the catch.
+- **Confirmation** — when the stroke detection algorithm completes its first threshold trough (up-crossing of the smoothed surge signal), rowing is confirmed and the stopwatch starts backdated to the candidate start time. This separates stroke *confirmation* from SPM *measurement*: SPM requires two troughs for an interval; confirmation requires only one.
 
 If no stroke trough is detected within one maximum stroke period (`STROKE_CONFIRM_TIMEOUT_MS = 60000 / MIN_ROWING_SPM`), the candidate start is discarded as a false positive. Low acceleration between strokes (e.g. the boat coasting after the release) does not trigger a false positive — only the absence of a confirmed stroke within the timeout does.
 
-Tap **Pause** to pause; tap **Resume** to re-arm and wait for motion again. Tap **Reset** to return to the initial state.
+Tap **Pause** to pause; tap **Resume** to re-arm. Tap **Reset** to return to the initial state.
 
-**Stopwatch tunable constants** (`src/lib/instruments/Stopwatch.svelte`):
+**Piece timer tunable constants** (`src/lib/sensors/pieceTimer.svelte.ts`):
 
 | Constant | Default | Effect |
 |---|---|---|
 | `MIN_ROWING_SPM` | 15 SPM | Slowest expected stroke rate. Sets the false-positive timeout to one full stroke period at this rate. |
+| `MIN_UNDERWAY_SPEED_MS` | 0.5 m/s | GPS speed threshold above which the boat is considered under way and stroke confirmation is skipped. |
+
+### Distance
+Integrates `GeolocationCoordinates.speed` over time using trapezoidal integration. Stays in sync with the stopwatch: same start time, same reset.
+
+**Speculative buffering:** when the pending confirmation window opens (boat at rest, motion detected), GPS speed samples are buffered speculatively. On confirmation, the buffer is integrated from the candidate start time as the distance seed — so distance from the first drive is not lost during the ~1-stroke wait for confirmation. The leading interval (from candidate start to the first GPS fix) is extrapolated at the first fix's speed. On a false positive, the buffer is discarded.
+
+GPS fixes with accuracy worse than `MIN_ACCURACY_M` (20 m) are excluded from integration, matching the pace gate.
 
 ## Deployment
 The app is a fully static SvelteKit build. A GitHub Actions workflow (`.github/workflows/deploy.yml`) builds and deploys to GitHub Pages on manual trigger. The base path (`/repo-name`) is injected automatically from the repository name.

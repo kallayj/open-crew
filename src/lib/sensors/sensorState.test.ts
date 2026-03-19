@@ -442,4 +442,54 @@ describe('GpsSensor accuracy', () => {
     expect(await promise).toBe(0);
     expect(sensor.isGpsFix).toBe(true);
   });
+
+  // --- speedMs / speedTimestamp ---
+
+  it('speedMs starts as null', () => {
+    expect(new GpsSensor().speedMs).toBeNull();
+  });
+
+  it('speedTimestamp starts as null', () => {
+    expect(new GpsSensor().speedTimestamp).toBeNull();
+  });
+
+  it('speedMs is set when accuracy is good and speed is valid', () => {
+    const { fireSuccess } = makeGeoMock();
+    const sensor = new GpsSensor();
+    sensor.start();
+    fireSuccess(makePosition(MIN_ACCURACY_M, { speed: 3.2, timestamp: 1000 }));
+    expect(sensor.speedMs).toBe(3.2);
+    expect(sensor.speedTimestamp).toBe(1000);
+  });
+
+  it('speedMs is cleared when accuracy degrades above MIN_ACCURACY_M', () => {
+    const { fireSuccess } = makeGeoMock();
+    const sensor = new GpsSensor();
+    sensor.start();
+    fireSuccess(makePosition(MIN_ACCURACY_M, { speed: 3.0, timestamp: 1000 }));
+    expect(sensor.speedMs).toBe(3.0);
+
+    fireSuccess(makePosition(MIN_ACCURACY_M + 1, { speed: 3.0, timestamp: 2000 }));
+    expect(sensor.speedMs).toBeNull();
+    expect(sensor.speedTimestamp).toBeNull();
+  });
+
+  it('speedMs is null when device reports no speed (null)', () => {
+    const { fireSuccess } = makeGeoMock();
+    const sensor = new GpsSensor();
+    sensor.start();
+    fireSuccess(makePosition(MIN_ACCURACY_M, { speed: null, timestamp: 1000 }));
+    expect(sensor.speedMs).toBeNull();
+  });
+
+  it('speedMs updates on each subsequent good fix', () => {
+    const { fireSuccess } = makeGeoMock();
+    const sensor = new GpsSensor();
+    sensor.start();
+    fireSuccess(makePosition(MIN_ACCURACY_M, { speed: 2.0, timestamp: 1000 }));
+    expect(sensor.speedMs).toBe(2.0);
+    fireSuccess(makePosition(MIN_ACCURACY_M, { speed: 3.5, timestamp: 2000 }));
+    expect(sensor.speedMs).toBe(3.5);
+    expect(sensor.speedTimestamp).toBe(2000);
+  });
 });

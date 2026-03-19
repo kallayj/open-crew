@@ -26,6 +26,13 @@ export class GpsSensor {
   position = $state<{ lat: number; lon: number } | null>(null);
   /** True when the fix includes altitude, indicating a real GNSS fix rather than IP/WiFi. */
   isGpsFix = $state<boolean | null>(null);
+  /** Raw speed in m/s from the latest good fix, or null when unavailable. */
+  speedMs = $state<number | null>(null);
+  /**
+   * Timestamp of the latest good speed fix in Unix epoch milliseconds
+   * (same scale as pos.timestamp / Date.now()).
+   */
+  speedTimestamp = $state<number | null>(null);
 
   private samples: SpeedSample[] = [];
   private watchId: number | null = null;
@@ -91,11 +98,16 @@ export class GpsSensor {
     // Don't compute pace from inaccurate or invalid fixes (acc=0 is a browser bug)
     if (acc > MIN_ACCURACY_M) {
       this.pace = null;
+      this.speedMs = null;
+      this.speedTimestamp = null;
       return;
     }
 
     const spd = pos.coords.speed;
     if (spd === null || spd < 0) return;
+
+    this.speedMs = spd;
+    this.speedTimestamp = pos.timestamp;
 
     this.samples.push({ speed: spd, timestamp: pos.timestamp });
 
