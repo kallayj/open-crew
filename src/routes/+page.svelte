@@ -165,7 +165,8 @@
   .panel {
     border: 1px solid var(--border);
     display: flex;
-    align-items: stretch;
+    align-items: center;
+    justify-content: center;
   }
 
   .panel:not(:first-child) {
