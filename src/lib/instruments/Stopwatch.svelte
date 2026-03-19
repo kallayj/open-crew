@@ -9,7 +9,7 @@
     if (!('mediaSession' in navigator)) return;
 
     navigator.mediaSession.setActionHandler('play', () => {
-      if (pieceTimer.watchState === 'paused') pieceTimer.watchState = 'ready';
+      if (pieceTimer.watchState === 'paused') pieceTimer.toggleRunning();
     });
     navigator.mediaSession.setActionHandler('pause', () => {
       if (pieceTimer.watchState === 'running') pieceTimer.pause();
@@ -28,7 +28,7 @@
   $effect(() => {
     if (!('mediaSession' in navigator)) return;
     navigator.mediaSession.playbackState =
-      pieceTimer.watchState === 'running' ? 'playing' : 'paused';
+      pieceTimer.watchState === 'paused' ? 'paused' : 'playing';
     navigator.mediaSession.setPositionState({
       duration: Infinity,
       playbackRate: 1,
