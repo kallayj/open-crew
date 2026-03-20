@@ -57,11 +57,11 @@
       <div class="sensor-list">
         <div class="sensor-row">
           <div class="sensor-name">Motion</div>
-          <div class="sensor-desc">Stroke rate</div>
+          <div class="sensor-desc">Stroke rate · Heading</div>
         </div>
         <div class="sensor-row">
           <div class="sensor-name">GPS</div>
-          <div class="sensor-desc">Speed · Position</div>
+          <div class="sensor-desc">Speed · Heading · Position</div>
         </div>
       </div>
 
@@ -84,7 +84,7 @@
         <div class="sensor-row">
           <div class="sensor-info">
             <div class="sensor-name">Motion</div>
-            <div class="sensor-desc">Stroke rate</div>
+            <div class="sensor-desc">Stroke rate · Heading</div>
           </div>
           <div class="sensor-status"
             class:granted={motionState === 'granted'}
@@ -95,7 +95,7 @@
         <div class="sensor-row">
           <div class="sensor-info">
             <div class="sensor-name">GPS</div>
-            <div class="sensor-desc">Speed · Position</div>
+            <div class="sensor-desc">Speed · Heading · Position</div>
             {#if gps.position !== null}
               <div class="sensor-desc">{gps.position.lat.toFixed(5)}, {gps.position.lon.toFixed(5)}</div>
               <div class="sensor-desc">source: {gps.isGpsFix ? 'GPS' : 'network'}</div>
@@ -116,7 +116,16 @@
         </div>
       {:else if motionState === 'denied'}
         <div class="motion-msg warn" role="alert">
-          <span class="icon">&#x26A0;</span>Motion unavailable: no stroke rate.
+          <span class="icon">&#x26A0;</span>Motion unavailable: no stroke rate or heading.
+        </div>
+      {/if}
+      {#if gpsState === 'denied' && !bothOut}
+        <div class="motion-msg warn" role="alert">
+          <span class="icon">&#x26A0;</span>GPS unavailable: no speed or heading.
+        </div>
+      {:else if gpsIpBased && !bothOut}
+        <div class="motion-msg warn" role="alert">
+          <span class="icon">&#x26A0;</span>Network location: no speed or heading.
         </div>
       {/if}
 
