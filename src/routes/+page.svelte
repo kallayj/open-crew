@@ -41,22 +41,41 @@
 
   let showStartup = $state(true);
 
-  function startSilentAudio() {
+  let audioEl = $state<HTMLAudioElement | null>(null);
+  let showAudio = $state(false);
+  let audioStream = $state<MediaStream | null>(null);
+
+  function startAudio() {
     const ctx = new AudioContext();
+    const dest = ctx.createMediaStreamDestination();
     const buf = ctx.createBuffer(1, 1, 22050);
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.loop = true;
-    src.connect(ctx.destination);
+    src.connect(dest);
     src.start();
+    audioStream = dest.stream;
+    showAudio = true;
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({ title: 'Row' });
     }
   }
 
+  $effect(() => {
+    if (audioEl && audioStream) audioEl.srcObject = audioStream;
+  });
+
+  $effect(() => {
+    if (!audioEl || pieceTimer.watchState === 'paused') {
+      audioEl?.pause();
+      return;
+    }
+    audioEl.play();
+  });
+
   function onStartupContinue(mediaSession: boolean) {
     showStartup = false;
-    if (mediaSession) startSilentAudio();
+    if (mediaSession) startAudio();
     checkBanner();
   }
 
@@ -165,6 +184,14 @@
     <BoatSpeed pace={gps.pace} permissionState={gps.permissionState} accuracy={gps.accuracy} isGpsFix={gps.isGpsFix} />
   </div>
 </div>
+
+{#if showAudio}
+  <audio
+    bind:this={audioEl}
+    controls
+    style="position:fixed;bottom:0;left:0;width:100%;z-index:50"
+  ></audio>
+{/if}
 
 <div class="build-badge" class:dev={__BUILD_TIME__.endsWith('-dev')}>
   {__BUILD_TIME__}

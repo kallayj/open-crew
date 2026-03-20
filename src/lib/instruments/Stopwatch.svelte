@@ -12,7 +12,7 @@
       if (pieceTimer.watchState === 'paused') pieceTimer.toggleRunning();
     });
     navigator.mediaSession.setActionHandler('pause', () => {
-      if (pieceTimer.watchState === 'running') pieceTimer.pause();
+      if (pieceTimer.watchState !== 'paused') pieceTimer.toggleRunning();
     });
     navigator.mediaSession.setActionHandler('stop', () => pieceTimer.reset());
     navigator.mediaSession.setActionHandler('previoustrack', () => pieceTimer.reset());
