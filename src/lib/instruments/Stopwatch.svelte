@@ -98,7 +98,7 @@
   }
 
   .value {
-    font-size: clamp(2rem, 9vw, 5.5rem);
+    font-size: var(--instrument-value-size, clamp(2rem, 9vw, 5.5rem));
     font-weight: 700;
     line-height: 1;
     color: var(--text-muted);

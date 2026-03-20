@@ -1,21 +1,23 @@
 <script lang="ts">
   import { untrack, onMount } from 'svelte';
-  import { browser } from '$app/environment';
   import { MotionSensor } from '$lib/sensors/motion.svelte';
   import { GpsSensor } from '$lib/sensors/gps.svelte';
   import { HeadingSensor } from '$lib/sensors/heading.svelte';
   import { PieceTimer } from '$lib/sensors/pieceTimer.svelte';
+  import { PieceAccumulators } from '$lib/sensors/pieceAccumulators.svelte';
   import StrokeRate from '$lib/instruments/StrokeRate.svelte';
   import BoatSpeed from '$lib/instruments/BoatSpeed.svelte';
   import Stopwatch from '$lib/instruments/Stopwatch.svelte';
-  import Heading from '$lib/instruments/Heading.svelte';
   import Distance from '$lib/instruments/Distance.svelte';
+  import StrokeCount from '$lib/instruments/StrokeCount.svelte';
+  import Heading from '$lib/instruments/Heading.svelte';
   import StartupScreen from '$lib/startup/StartupScreen.svelte';
 
   const motion = new MotionSensor();
   const gps = new GpsSensor();
   const heading = new HeadingSensor();
   const pieceTimer = new PieceTimer();
+  const piece = new PieceAccumulators(pieceTimer, gps);
 
   // Feed GPS speed + heading into the heading sensor for calibration and IMU fallback.
   $effect(() => {
@@ -30,7 +32,10 @@
   });
   $effect(() => {
     if (motion.lastStrokeTime !== null) {
-      untrack(() => pieceTimer.onStrokeConfirmed());
+      untrack(() => {
+        pieceTimer.onStrokeConfirmed();
+        piece.onStrokeConfirmed();
+      });
     }
   });
 
@@ -126,21 +131,35 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 </svelte:head>
 
+<!--
+  Landscape: heading HUD row spanning all 3 columns, then
+             StrokeRate | accum-group (Stopwatch/Distance/StrokeCount) | BoatSpeed
+  Portrait:  heading row, then StrokeRate, Stopwatch, Distance, StrokeCount, BoatSpeed
+             (accum-group uses display:contents so its children join the grid directly)
+-->
 <div class="panel-grid">
   <div class="panel panel-hud">
     <Heading heading={heading.heading} source={heading.source} boatDeviceOffset={heading.boatDeviceOffset} />
   </div>
-  <div class="panel">
+
+  <div class="panel p-stroke-rate">
     <StrokeRate spm={motion.spm} permissionState={motion.permissionState} />
   </div>
-  <div class="panel">
+
+  <div class="accum-group">
+    <div class="panel p-stopwatch">
+      <Stopwatch {pieceTimer} />
+    </div>
+    <div class="panel p-distance">
+      <Distance {pieceTimer} distanceM={piece.distanceM} />
+    </div>
+    <div class="panel p-stroke-count">
+      <StrokeCount {pieceTimer} strokeCount={piece.strokeCount} />
+    </div>
+  </div>
+
+  <div class="panel p-boat-speed">
     <BoatSpeed pace={gps.pace} permissionState={gps.permissionState} accuracy={gps.accuracy} isGpsFix={gps.isGpsFix} />
-  </div>
-  <div class="panel">
-    <Stopwatch {pieceTimer} />
-  </div>
-  <div class="panel">
-    <Distance {pieceTimer} {gps} />
   </div>
 </div>
 
@@ -168,44 +187,51 @@
     display: grid;
     width: 100vw;
     height: 100dvh;
-    background: var(--bg);
+    gap: 1px;
+    background: var(--border);
   }
 
-  /* Landscape: HUD row above, four instrument columns below */
+  /* Landscape: heading HUD spans full width above three instrument columns */
   @media (orientation: landscape) {
     .panel-grid {
-      grid-template-columns: 1fr 1fr 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
       grid-template-rows: 1fr 3fr;
     }
+
     .panel-hud {
       grid-column: 1 / -1;
     }
-    /* Instrument panels share top border with HUD bottom */
-    .panel:not(.panel-hud) {
-      border-top: none;
-    }
-    /* Instrument panels 2–4 share left border with previous panel's right */
-    .panel:not(.panel-hud):not(:nth-child(2)) {
-      border-left: none;
+
+    .accum-group {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      background: var(--border);
+      /* Reduce value font size to fit three instruments in the stacked cells */
+      --instrument-value-size: clamp(1.4rem, 14dvh, 3.5rem);
     }
   }
 
-  /* Portrait: HUD row then four instrument rows */
+  /* Portrait: heading row then five instrument rows */
   @media (orientation: portrait) {
     .panel-grid {
       grid-template-columns: 1fr;
-      grid-template-rows: 1fr 2fr 2fr 2fr 2fr;
+      grid-template-rows: 1fr 2fr 2fr 2fr 2fr 2fr;
     }
-    .panel:not(:first-child) {
-      border-top: none;
+
+    /* Flatten the group so its children are direct grid items in rows 3–5 */
+    .accum-group {
+      display: contents;
     }
   }
 
   .panel {
-    border: 1px solid var(--border);
+    background: var(--bg);
     display: flex;
     align-items: center;
     justify-content: center;
+    /* flex:1 applies when .panel is a child of .accum-group in landscape */
+    flex: 1;
   }
 
   /* Fullscreen banner */

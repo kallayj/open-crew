@@ -12,9 +12,8 @@ const MIN_UNDERWAY_SPEED_MS = 0.5;
  *   running  → first stroke trough confirmed; timer backdated to pendingStartTime
  *   discard  → timeout fires before confirmation; pending window closed
  *
- * Consumers (Stopwatch display, Distance integrator) subscribe to the reactive
- * $state fields.  +page.svelte feeds sensor events via onMotionDetected() and
- * onStrokeConfirmed(), called from $effects that track the sensor outputs.
+ * +page.svelte feeds sensor events via onMotionDetected() and onStrokeConfirmed(),
+ * called from $effects that track the sensor outputs.
  */
 export class PieceTimer {
   watchState = $state<'ready' | 'running' | 'paused'>('paused');

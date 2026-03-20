@@ -1,26 +1,19 @@
 <script lang="ts">
-  import { formatDistance } from '$lib/utils/format';
   import type { PieceTimer } from '$lib/sensors/pieceTimer.svelte';
 
-  let { pieceTimer, distanceM }: {
+  let { pieceTimer, strokeCount }: {
     pieceTimer: PieceTimer;
-    distanceM: number;
+    strokeCount: number;
   } = $props();
-
-  const displayDist = $derived(
-    pieceTimer.watchState === 'paused' && pieceTimer.elapsed === 0 && distanceM === 0
-      ? '--'
-      : formatDistance(distanceM),
-  );
 
   const isActive = $derived(pieceTimer.watchState === 'running');
   const isDim = $derived(pieceTimer.watchState === 'paused' && pieceTimer.elapsed === 0);
 </script>
 
 <div class="instrument">
-  <div class="label">DISTANCE</div>
+  <div class="label">STROKES</div>
   <div class="value" class:active={isActive} class:dim={isDim}>
-    {displayDist}
+    {strokeCount}
   </div>
 </div>
 
