@@ -33,6 +33,11 @@ export class GpsSensor {
    * (same scale as pos.timestamp / Date.now()).
    */
   speedTimestamp = $state<number | null>(null);
+  /**
+   * GPS track heading in degrees clockwise from true north (0–360), or null when
+   * unavailable. NaN when speed is 0 (browser-reported); treated as null by consumers.
+   */
+  trackHeading = $state<number | null>(null);
 
   private samples: SpeedSample[] = [];
   private watchId: number | null = null;
@@ -108,6 +113,9 @@ export class GpsSensor {
 
     this.speedMs = spd;
     this.speedTimestamp = pos.timestamp;
+    this.trackHeading = (pos.coords.heading !== null && !isNaN(pos.coords.heading))
+      ? pos.coords.heading
+      : null;
 
     this.samples.push({ speed: spd, timestamp: pos.timestamp });
 

@@ -3,16 +3,24 @@
   import { browser } from '$app/environment';
   import { MotionSensor } from '$lib/sensors/motion.svelte';
   import { GpsSensor } from '$lib/sensors/gps.svelte';
+  import { HeadingSensor } from '$lib/sensors/heading.svelte';
   import { PieceTimer } from '$lib/sensors/pieceTimer.svelte';
   import StrokeRate from '$lib/instruments/StrokeRate.svelte';
   import BoatSpeed from '$lib/instruments/BoatSpeed.svelte';
   import Stopwatch from '$lib/instruments/Stopwatch.svelte';
+  import Heading from '$lib/instruments/Heading.svelte';
   import Distance from '$lib/instruments/Distance.svelte';
   import StartupScreen from '$lib/startup/StartupScreen.svelte';
 
   const motion = new MotionSensor();
   const gps = new GpsSensor();
+  const heading = new HeadingSensor();
   const pieceTimer = new PieceTimer();
+
+  // Feed GPS speed + heading into the heading sensor for calibration and IMU fallback.
+  $effect(() => {
+    heading.update(gps.speedMs, gps.trackHeading);
+  });
 
   // Feed motion sensor events into the shared piece timer lifecycle.
   $effect(() => {
@@ -96,9 +104,12 @@
     document.addEventListener('fullscreenchange', updateBanner);
     window.addEventListener('resize', updateBanner);
 
+    heading.start();
+
     return () => {
       motion.destroy();
       gps.destroy();
+      heading.destroy();
       wakeLock?.release();
       screen.orientation?.removeEventListener('change', updateBanner);
       document.removeEventListener('fullscreenchange', updateBanner);
@@ -116,6 +127,9 @@
 </svelte:head>
 
 <div class="panel-grid">
+  <div class="panel panel-hud">
+    <Heading heading={heading.heading} source={heading.source} boatDeviceOffset={heading.boatDeviceOffset} />
+  </div>
   <div class="panel">
     <StrokeRate spm={motion.spm} permissionState={motion.permissionState} />
   </div>
@@ -157,19 +171,33 @@
     background: var(--bg);
   }
 
-  /* Landscape: four columns */
+  /* Landscape: HUD row above, four instrument columns below */
   @media (orientation: landscape) {
     .panel-grid {
       grid-template-columns: 1fr 1fr 1fr 1fr;
-      grid-template-rows: 1fr;
+      grid-template-rows: 1fr 3fr;
+    }
+    .panel-hud {
+      grid-column: 1 / -1;
+    }
+    /* Instrument panels share top border with HUD bottom */
+    .panel:not(.panel-hud) {
+      border-top: none;
+    }
+    /* Instrument panels 2–4 share left border with previous panel's right */
+    .panel:not(.panel-hud):not(:nth-child(2)) {
+      border-left: none;
     }
   }
 
-  /* Portrait: four rows */
+  /* Portrait: HUD row then four instrument rows */
   @media (orientation: portrait) {
     .panel-grid {
       grid-template-columns: 1fr;
-      grid-template-rows: 1fr 1fr 1fr 1fr;
+      grid-template-rows: 1fr 2fr 2fr 2fr 2fr;
+    }
+    .panel:not(:first-child) {
+      border-top: none;
     }
   }
 
@@ -178,17 +206,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-  }
-
-  .panel:not(:first-child) {
-    border-left: none;
-  }
-
-  @media (orientation: portrait) {
-    .panel:not(:first-child) {
-      border-left: 1px solid var(--border);
-      border-top: none;
-    }
   }
 
   /* Fullscreen banner */
