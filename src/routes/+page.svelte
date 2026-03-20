@@ -49,6 +49,9 @@
     src.loop = true;
     src.connect(ctx.destination);
     src.start();
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({ title: 'Row' });
+    }
   }
 
   function onStartupContinue(mediaSession: boolean) {
