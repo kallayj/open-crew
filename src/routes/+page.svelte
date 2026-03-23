@@ -40,29 +40,30 @@
   });
 
   let showStartup = $state(true);
+  let useMetronome = $state(false);
 
   let audioEl = $state<HTMLAudioElement | null>(null);
   let showAudio = $state(false);
-  let audioStream = $state<MediaStream | null>(null);
+  let audioCtx = $state<{ ctx: AudioContext; dest: MediaStreamAudioDestinationNode } | null>(null);
 
   function startAudio() {
+    const el = new Audio();  
+    audioEl = el;     
     const ctx = new AudioContext();
     const dest = ctx.createMediaStreamDestination();
-    const buf = ctx.createBuffer(1, 1, 22050);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.loop = true;
-    src.connect(dest);
-    src.start();
-    audioStream = dest.stream;
-    showAudio = true;
+    // Keep the AudioContext alive by connecting a silent node to the real output.
+    // const keepAlive = ctx.createGain();
+    // keepAlive.gain.value = 0;
+    // keepAlive.connect(ctx.destination);
+    audioCtx = { ctx, dest };
+    showAudio = false;
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({ title: 'Row' });
     }
   }
 
   $effect(() => {
-    if (audioEl && audioStream) audioEl.srcObject = audioStream;
+    if (audioEl && audioCtx) audioEl.srcObject = audioCtx.dest.stream;
   });
 
   $effect(() => {
@@ -70,12 +71,31 @@
       audioEl?.pause();
       return;
     }
+    const { ctx, dest } = audioCtx;
+    // ctx.resume();
     audioEl.play();
+    function tick() {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(dest);
+      osc.frequency.value = 600;
+      gain.gain.setValueAtTime(0.06, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.06);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.06);
+    }
+    if (useMetronome) {
+      tick();
+      const id = setInterval(tick, 1000);
+      return () => clearInterval(id);
+    }
   });
 
-  function onStartupContinue(mediaSession: boolean) {
+  function onStartupContinue(useMediaSession: boolean, metronome: boolean) {
     showStartup = false;
-    if (mediaSession) startAudio();
+    useMetronome = metronome;
+    if (useMediaSession) startAudio();
     checkBanner();
   }
 
@@ -189,7 +209,7 @@
   <audio
     bind:this={audioEl}
     controls
-    style="position:fixed;bottom:0;left:0;width:100%;z-index:50"
+    style="visibility:hidden;position:fixed;bottom:0;left:0;width:100%;z-index:50"
   ></audio>
 {/if}
 

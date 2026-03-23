@@ -7,12 +7,13 @@
   let { motion, gps, oncontinue }: {
     motion: MotionSensor;
     gps: GpsSensor;
-    oncontinue: (mediaSession: boolean) => void;
+    oncontinue: (useMediaSession: boolean, metronome: boolean) => void;
   } = $props();
 
   type Phase = 'idle' | 'requesting' | 'degraded';
   let phase = $state<Phase>('idle');
-  let mediaSession = $state(false);
+  let useMediaSession = $state(false);
+  let metronome = $state(false);
   let gpsIpBased = $state(false);
   let gpsPoorAccuracy = $state(false);
 
@@ -36,7 +37,7 @@
     if (anyDegraded) {
       phase = 'degraded';
     } else {
-      oncontinue(mediaSession);
+      oncontinue(useMediaSession, metronome);
     }
   }
 
@@ -66,7 +67,8 @@
       </div>
 
       <label class="media-session-row">
-        <input type="checkbox" bind:checked={mediaSession} />
+        <input type="checkbox" bind:checked={useMediaSession} />
+        <input type="checkbox" bind:checked={metronome} />
         <span class="media-session-label">
           Media session controls
           <span class="media-session-desc">Start / reset via Bluetooth or headphone remote</span>
@@ -139,7 +141,7 @@
       {/if}
 
       <label class="media-session-row">
-        <input type="checkbox" bind:checked={mediaSession} />
+        <input type="checkbox" bind:checked={useMediaSession} />
         <span class="media-session-label">
           Media session controls
           <span class="media-session-desc">Start / reset via Bluetooth or headphone remote</span>
@@ -147,7 +149,7 @@
       </label>
 
       <div class="actions">
-        <button class="btn-primary" onclick={() => oncontinue(mediaSession)}>Continue</button>
+        <button class="btn-primary" onclick={() => oncontinue(useMediaSession, metronome)}>Continue</button>
       </div>
     {/if}
   </div>
