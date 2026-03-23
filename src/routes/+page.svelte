@@ -44,52 +44,53 @@
 
   let audioEl = $state<HTMLAudioElement | null>(null);
   let showAudio = $state(false);
-  let audioCtx = $state<{ ctx: AudioContext; dest: MediaStreamAudioDestinationNode } | null>(null);
+  //let audioCtx = $state<{ ctx: AudioContext; dest: MediaStreamAudioDestinationNode } | null>(null);
 
   function startAudio() {
-    const el = new Audio();  
+    const el = new Audio('https://assets.codepen.io/4358584/Anitek_-_Carry_On.mp3');  
+    el.loop = true;
     audioEl = el;     
-    const ctx = new AudioContext();
-    const dest = ctx.createMediaStreamDestination();
+    // const ctx = new AudioContext();
+    // const dest = ctx.createMediaStreamDestination();
     // Keep the AudioContext alive by connecting a silent node to the real output.
     // const keepAlive = ctx.createGain();
     // keepAlive.gain.value = 0;
     // keepAlive.connect(ctx.destination);
-    audioCtx = { ctx, dest };
+    //audioCtx = { ctx, dest };
     showAudio = false;
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({ title: 'Row' });
     }
   }
 
-  $effect(() => {
-    if (audioEl && audioCtx) audioEl.srcObject = audioCtx.dest.stream;
-  });
+  // $effect(() => {
+  //   if (audioEl && audioCtx) audioEl.srcObject = audioCtx.dest.stream;
+  // });
 
   $effect(() => {
     if (!audioEl || pieceTimer.watchState === 'paused') {
       audioEl?.pause();
       return;
     }
-    const { ctx, dest } = audioCtx;
+    //const { ctx, dest } = audioCtx;
     // ctx.resume();
     audioEl.play();
-    function tick() {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(dest);
-      osc.frequency.value = 600;
-      gain.gain.setValueAtTime(0.06, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.06);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.06);
-    }
-    if (useMetronome) {
-      tick();
-      const id = setInterval(tick, 1000);
-      return () => clearInterval(id);
-    }
+    // function tick() {
+    //   const osc = ctx.createOscillator();
+    //   const gain = ctx.createGain();
+    //   osc.connect(gain);
+    //   gain.connect(dest);
+    //   osc.frequency.value = 600;
+    //   gain.gain.setValueAtTime(0.06, ctx.currentTime);
+    //   gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.06);
+    //   osc.start(ctx.currentTime);
+    //   osc.stop(ctx.currentTime + 0.06);
+    // }
+    // if (useMetronome) {
+    //   tick();
+    //   const id = setInterval(tick, 1000);
+    //   return () => clearInterval(id);
+    // }
   });
 
   function onStartupContinue(useMediaSession: boolean, metronome: boolean) {
