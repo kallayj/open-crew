@@ -5,14 +5,21 @@
 </script>
 
 <!--
-  Compass-rose indicator showing the boat's axes in the device's reference frame.
-  The entire group rotates by `offset` degrees (clockwise from screen-top = device up).
+  Compass-rose indicator showing the boat's axes in the device's portrait reference frame.
+  The arrow group rotates by `offset` degrees clockwise from the portrait y-axis (screen
+  top in the device's natural orientation). The static portrait rectangle makes that frame
+  of reference explicit — the arrows are always relative to it, regardless of how the
+  device is physically oriented on screen.
 
   Forward arrow: red on the port (left) half, green on the starboard (right) half —
   matching navigation light convention as seen from ahead of the boat.
   Starboard: green. Port: red. Stern: dim.
 -->
 <svg viewBox="0 0 100 100" class="indicator" class:uncalibrated={!calibrated} aria-hidden="true">
+  <!-- Portrait device outline — fixed, defines the reference frame for the arrows -->
+  <rect x="31" y="5" width="38" height="90" rx="4" ry="4"
+        fill="none" stroke="#444" stroke-width="1.5" />
+
   <g transform="rotate({rotation}, 50, 50)">
     <!-- Forward arrow: port half red, starboard half green -->
     <polygon points="50,14 43,34 50,34" fill="#ff5252" />
