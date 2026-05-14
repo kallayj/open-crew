@@ -4,42 +4,6 @@
 
   let { pieceTimer }: { pieceTimer: PieceTimer } = $props();
 
-  // Media Session integration
-  $effect(() => {
-    if (!('mediaSession' in navigator)) return;
-
-    navigator.mediaSession.setActionHandler('play', () => {
-      if (pieceTimer.watchState === 'paused') pieceTimer.toggleRunning();
-    });
-    navigator.mediaSession.setActionHandler('pause', () => {
-      if (pieceTimer.watchState !== 'paused') pieceTimer.toggleRunning();
-    });
-    navigator.mediaSession.setActionHandler('stop', () => pieceTimer.reset());
-    navigator.mediaSession.setActionHandler('previoustrack', () => pieceTimer.reset());
-    navigator.mediaSession.setActionHandler('seekbackward', () => pieceTimer.reset());
-    navigator.mediaSession.setActionHandler('nexttrack', () => pieceTimer.reset());
-
-    return () => {
-      navigator.mediaSession.setActionHandler('play', null);
-      navigator.mediaSession.setActionHandler('pause', null);
-      navigator.mediaSession.setActionHandler('stop', null);
-      navigator.mediaSession.setActionHandler('previoustrack', null);
-      navigator.mediaSession.setActionHandler('seekbackward', null);
-      navigator.mediaSession.setActionHandler('nexttrack', null);
-    };
-  });
-
-  $effect(() => {
-    if (!('mediaSession' in navigator)) return;
-    navigator.mediaSession.playbackState =
-      pieceTimer.watchState === 'paused' ? 'paused' : 'playing';
-    navigator.mediaSession.setPositionState({
-      duration: Infinity,
-      playbackRate: 1,
-      position: pieceTimer.elapsed / 1000,
-    });
-  });
-
   const displayTime = $derived(
     pieceTimer.watchState === 'ready'
       ? 'READY'

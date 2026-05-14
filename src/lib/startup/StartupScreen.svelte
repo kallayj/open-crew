@@ -7,13 +7,11 @@
   let { motion, gps, oncontinue }: {
     motion: MotionSensor;
     gps: GpsSensor;
-    oncontinue: (useMediaSession: boolean, metronome: boolean) => void;
+    oncontinue: () => void;
   } = $props();
 
   type Phase = 'idle' | 'requesting' | 'degraded';
   let phase = $state<Phase>('idle');
-  let useMediaSession = $state(false);
-  let metronome = $state(false);
   let gpsIpBased = $state(false);
   let gpsPoorAccuracy = $state(false);
 
@@ -37,7 +35,7 @@
     if (anyDegraded) {
       phase = 'degraded';
     } else {
-      oncontinue(useMediaSession, metronome);
+      oncontinue();
     }
   }
 
@@ -65,15 +63,6 @@
           <div class="sensor-desc">Speed · Heading · Position</div>
         </div>
       </div>
-
-      <label class="media-session-row">
-        <input type="checkbox" bind:checked={useMediaSession} />
-        <input type="checkbox" bind:checked={metronome} />
-        <span class="media-session-label">
-          Media session controls
-          <span class="media-session-desc">Start / reset via Bluetooth or headphone remote</span>
-        </span>
-      </label>
 
       <div class="actions">
         <button class="btn-primary" onclick={grantAccess} disabled={phase === 'requesting'}>
@@ -140,16 +129,8 @@
         />
       {/if}
 
-      <label class="media-session-row">
-        <input type="checkbox" bind:checked={useMediaSession} />
-        <span class="media-session-label">
-          Media session controls
-          <span class="media-session-desc">Start / reset via Bluetooth or headphone remote</span>
-        </span>
-      </label>
-
       <div class="actions">
-        <button class="btn-primary" onclick={() => oncontinue(useMediaSession, metronome)}>Continue</button>
+        <button class="btn-primary" onclick={oncontinue}>Continue</button>
       </div>
     {/if}
   </div>
@@ -234,33 +215,6 @@
   .motion-msg.warn  { color: #ffab40; border: 1px solid #ffab40; }
 
   .icon { flex-shrink: 0; }
-
-  .media-session-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    cursor: pointer;
-    font-size: 0.8rem;
-    color: var(--text-muted);
-  }
-
-  .media-session-row input[type="checkbox"] {
-    margin-top: 0.1rem;
-    accent-color: var(--accent);
-    flex-shrink: 0;
-    cursor: pointer;
-  }
-
-  .media-session-label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-  }
-
-  .media-session-desc {
-    font-size: 0.65rem;
-    color: var(--text-muted);
-  }
 
   .actions {
     display: flex;
